@@ -14,7 +14,7 @@ app = FastAPI(title="學生會設備管理系統-雲端資料庫版")
 # 1. 允許跨網域請求 (CORS) - 讓 Vercel 網頁可以連到 Render 後端
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # 👈 確保這裡是星號，代表接受所有網域
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
