@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幹部專區 - 歸還管理</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-warning mb-4 shadow-sm">
+        <div class="container">
+            <a class="navbar-brand fw-bold text-dark" href="#">🛡️ 學生會設備管理後台</a>
+            <div class="d-flex">
+                <a href="student.html" class="btn btn-dark btn-sm">⬅️ 返回學生借用區</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div id="login-section" class="card mb-4 border-warning shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title text-warning fw-bold">🛡️ 幹部登入</h5>
+                <p class="text-muted small">請輸入幹部代號以進行點收操作。</p>
+                <div class="input-group">
+                    <input type="text" id="admin-id-input" class="form-control border-warning" placeholder="例如：Admin-01">
+                    <button class="btn btn-warning fw-bold text-dark" onclick="login()">登入後台</button>
+                </div>
+            </div>
+        </div>
+        <div id="system-settings-section" class="bg-white p-4 rounded shadow mt-5 border-top border-dark border-5 d-none">
+            <h2 class="mb-4 fw-bold text-dark">⚙️ 系統設定：管理員名冊</h2>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card border-dark">
+                        <div class="card-body">
+                            <h5 class="card-title fw-bold">➕ 新增幹部</h5>
+                            <input type="text" id="new-admin-id" class="form-control mb-2" placeholder="設定新代號 (例: D12345678)">
+                            <input type="text" id="new-admin-name" class="form-control mb-3" placeholder="幹部名稱 (例: 設備長)">
+                            <button class="btn btn-dark w-100" onclick="addNewAdmin()">確認新增</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <h5 class="fw-bold mt-3 mt-md-0">📝 目前權限名單</h5>
+                    <ul id="admin-list" class="list-group">
+                        <li class="list-group-item text-muted">正在載入名單...</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div id="user-info-section" class="alert alert-warning shadow-sm d-none d-flex justify-content-between align-items-center mb-4">
+            <strong id="welcome-message" class="text-dark">👋 歡迎！</strong>
+            <button class="btn btn-sm btn-dark fw-bold" onclick="logout()">登出</button>
+        </div>
+
+        <div class="bg-white p-4 rounded shadow border-top border-warning border-5">
+            <h2 class="mb-4 text-warning fw-bold text-dark">📋 待歸還清單</h2>
+            <table class="table table-bordered table-hover text-center align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>交易編號</th>
+                        <th>設備名稱</th>
+                        <th>借用人學號</th>
+                        <th>借用時間</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="transaction-list">
+                    <tr><td colspan="5" class="text-muted p-4">正在載入未歸還清單...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+        let currentAdminId = localStorage.getItem("admin_id"); // 專屬幹部的記憶
+
+        // --- 升級版的登入與權限邏輯 ---
+        function checkLoginState() {
+            if (currentAdminId) {
+                document.getElementById("login-section").classList.add("d-none");
+                document.getElementById("user-info-section").classList.remove("d-none");
+                document.getElementById("system-settings-section").classList.remove("d-none"); // 顯示設定區
+                document.getElementById("welcome-message").innerText = `🛡️ 負責幹部：${currentAdminId}`;
+                fetchAdminList(); // 登入後自動抓取幹部名單
+            } else {
+                document.getElementById("login-section").classList.remove("d-none");
+                document.getElementById("user-info-section").classList.add("d-none");
+                document.getElementById("system-settings-section").classList.add("d-none"); // 隱藏設定區
+            }
+        }
+
+        async function login() {
+            const inputVal = document.getElementById("admin-id-input").value.trim();
+            if (!inputVal) return alert("幹部代號不能為空！");
+
+            try {
+                // 真正去問後端：這傢伙是幹部嗎？
+                const response = await fetch(`${API_URL}/admin/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ "幹部代號": inputVal })
+                });
+                
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert(`✅ 登入成功！歡迎，${result.名稱}`);
+                    currentAdminId = inputVal;
+                    localStorage.setItem("admin_id", currentAdminId);
+                    checkLoginState();
+                } else {
+                    alert(`❌ 登入失敗：${result.detail}`);
+                }
+            } catch (error) {
+                alert("伺服器連線失敗！");
+            }
+        }
+
+        function logout() {
+            currentAdminId = null;
+            localStorage.removeItem("admin_id");
+            document.getElementById("admin-id-input").value = "";
+            checkLoginState();
+        }
+
+        // --- 新增幹部與讀取名單邏輯 ---
+        async function addNewAdmin() {
+            const newId = document.getElementById("new-admin-id").value.trim();
+            const newName = document.getElementById("new-admin-name").value.trim();
+            
+            if(!newId || !newName) return alert("代號與名稱都必須填寫！");
+
+            try {
+                const response = await fetch(`${API_URL}/admin/add`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ "新幹部代號": newId, "新幹部名稱": newName })
+                });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`✅ ${result.訊息}`);
+                    document.getElementById("new-admin-id").value = "";
+                    document.getElementById("new-admin-name").value = "";
+                    fetchAdminList(); // 重新整理右邊的名單
+                } else {
+                    alert(`❌ 新增失敗：${result.detail}`);
+                }
+            } catch(e) { alert("連線失敗！"); }
+        }
+
+        async function fetchAdminList() {
+            try {
+                const response = await fetch(`${API_URL}/admins`);
+                const data = await response.json();
+                const list = document.getElementById("admin-list");
+                list.innerHTML = "";
+                
+                for (const [id, name] of Object.entries(data)) {
+                    list.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                        <strong>${name}</strong> <span class="badge bg-dark rounded-pill">${id}</span>
+                    </li>`;
+                }
+            } catch(e) { console.error("無法取得名單"); }
+        }
+
+        async function fetchTransactions() {
+            try {
+                const response = await fetch(`${API_URL}/transactions`);
+                const data = await response.json();
+                const tbody = document.getElementById("transaction-list");
+                tbody.innerHTML = ""; 
+
+                let hasRecords = false;
+                for (const [t_id, info] of Object.entries(data)) {
+                    hasRecords = true;
+                    tbody.innerHTML += `
+                        <tr>
+                            <td class="fw-bold text-primary">#${info.交易編號}</td>
+                            <td class="fw-bold">${info.設備名稱}</td>
+                            <td><span class="badge bg-secondary fs-6">${info.租借人員學號}</span></td>
+                            <td class="text-muted small">${info.借用時間}</td>
+                            <td>
+                                <button class="btn btn-sm btn-warning fw-bold" onclick="returnEquipment(${info.交易編號})">
+                                    ✅ 確認點收
+                                </button>
+                            </td>
+                        </tr>`;
+                }
+
+                if (!hasRecords) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="text-success fw-bold p-4">🎉 目前所有設備都在倉庫裡！</td></tr>`;
+                }
+            } catch (error) {
+                document.getElementById("transaction-list").innerHTML = `<tr><td colspan="5" class="text-danger p-4">無法取得資料！</td></tr>`;
+            }
+        }
+
+        async function returnEquipment(transactionId) {
+            if (!currentAdminId) return alert("⚠️ 請先登入幹部代號以進行點收！");
+            if (!confirm(`確定要以幹部 [${currentAdminId}] 的身分收回這項設備嗎？`)) return;
+
+            try {
+                const response = await fetch(`${API_URL}/return`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ "交易編號": transactionId, "歸還人員學號": currentAdminId })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    alert(`✅ ${result.訊息}`);
+                    fetchTransactions(); 
+                } else {
+                    alert(`❌ 歸還失敗：${result.detail}`);
+                }
+            } catch (error) { alert("連線錯誤！"); }
+        }
+
+        checkLoginState();
+        fetchTransactions();
+    </script>
+</body>
+</html>
