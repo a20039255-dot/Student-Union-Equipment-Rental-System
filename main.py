@@ -68,7 +68,8 @@ sync_from_google()
 def get_equipments(): return equipments
 
 @app.get("/transactions")
-def get_transactions():
+def 取得未歸還清單():
+    # 注意：這裡回傳的是一個字典
     return {k: v for k, v in transactions.items() if v["狀態"] == "借用中"}
 
 @app.post("/borrow")
