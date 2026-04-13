@@ -149,11 +149,14 @@
             if (!confirm(`確定要以 [${currentStudentId}] 的身分借用 [${eqId}] 嗎？`)) return;
 
             try {
-                const response = await fetch(`${API_URL}/borrow`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ "設備編號": eqId, "租借人員學號": currentStudentId })
-                });
+                const response = await fetch(`${API_URL}/borrow`, { 
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                "設備編號": equipmentId, 
+                "租借人員學號": currentStudentId 
+    })
+});
                 const result = await response.json();
                 if (response.ok) {
                     alert(`✅ 借用成功！交易編號：${result.交易紀錄.交易編號}`);
