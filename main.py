@@ -188,3 +188,8 @@ def 新增幹部(data: dict):
         sheets["admin"].append_row([cid, name])
         return {"成功": True}
     return {"成功": False}
+if __name__ == "__main__":
+    import uvicorn
+    # 注意：port 要讀取環境變數，Render 才能連進來
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
