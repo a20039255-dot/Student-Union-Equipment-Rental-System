@@ -255,10 +255,17 @@
 
         checkLoginState();
         fetchTransactions();
-        function updateTransactionList() {
-    fetch(`${API_URL}/transactions`)
+        function updateAdminList() {
+    // 確保後面接的是 /admins
+    fetch(`${API_URL}/admins`) 
         .then(res => res.json())
         .then(data => {
+            // ... 處理資料的邏輯
+        })
+        .catch(err => {
+            console.error("抓取失敗:", err);
+        });
+}
             const listBody = document.getElementById('transactionList');
             listBody.innerHTML = '';
             // 因為後端回傳的是字典，所以用 Object.values 轉成陣列
@@ -273,8 +280,6 @@
         `;
                 listBody.appendChild(row);
             });
-        });
-}
     </script>
 </body>
 </html>

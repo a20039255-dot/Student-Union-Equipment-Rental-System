@@ -68,8 +68,7 @@ sync_from_google()
 def get_equipments(): return equipments
 
 @app.get("/transactions")
-def 取得未歸還清單():
-    # 注意：這裡回傳的是一個字典
+def get_transactions():
     return {k: v for k, v in transactions.items() if v["狀態"] == "借用中"}
 
 @app.post("/borrow")
@@ -98,6 +97,11 @@ def return_item(req: dict):
             equipments[transactions[tid]["設備編號"]]["剩餘數量"] += 1
             return {"成功": True}
         raise HTTPException(status_code=400)
+
+@app.get("/admins")  # 👈 檢查這裡的字
+def 取得幹部名單():
+    sync_from_google()
+    return admins_db
 
 @app.post("/admin/login")
 def admin_login(req: dict):
