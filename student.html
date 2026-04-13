@@ -3,172 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>學生專區 - 設備借用</title>
+    <title>學生借用區</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#4a90e2">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <style>/* 當螢幕寬度小於 600px 時（手機模式） */
-    @media (max-width: 600px) {
-    .container {
-        width: 95%; /* 容器佔滿螢幕 */
-        margin: 10px auto;
-        padding: 15px;
-    }
-
-    h1 { font-size: 1.5rem; } /* 標題縮小一點 */
-
-    /* 讓按鈕變高、字變大，方便手指點擊 */
-    button {
-        width: 100%; /* 讓按鈕橫跨整個螢幕 */
-        height: 50px;
-        font-size: 1.1rem;
-        margin-bottom: 10px;
-    }
-
-    /* 調整表格在手機上的顯示 */
-    table {
-        display: block;
-        overflow-x: auto; /* 寬度不夠時可以左右滑動 */
-    }
-    
-    /* 輸入框也要大一點 */
-    input {
-        height: 45px;
-        font-size: 1rem !important;
-    }
-}</style>
+    <style>
+        .device-card { border-radius: 15px; transition: 0.3s; border: 1px solid #eee; }
+        @media (max-width: 600px) { table { font-size: 0.9rem; } .btn-sm-custom { padding: 5px 10px; } }
+    </style>
 </head>
 <body class="bg-light">
-
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4 shadow-sm">
+    <nav class="navbar navbar-dark bg-primary mb-4 shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="#">🎓 學生會設備租借系統</a>
-            <div class="d-flex">
-                <a href="admin.html" class="btn btn-outline-light btn-sm">切換至幹部管理區 ➡️</a>
-            </div>
+            <span class="navbar-brand">🎓 學生借用區</span>
+            <button class="btn btn-outline-light btn-sm" onclick="location.href='index.html'">返回首頁</button>
         </div>
     </nav>
 
     <div class="container">
-        <div id="login-section" class="card mb-4 border-primary shadow-sm">
-            <div class="card-body">
-                <h5 class="card-title text-primary fw-bold">🧑‍🎓 學生登入</h5>
-                <p class="text-muted small">請輸入您的學號以進行設備借用。</p>
-                <div class="input-group">
-                    <input type="text" id="student-id-input" class="form-control" placeholder="例如：B1123456">
-                    <button class="btn btn-primary" onclick="login()">登入</button>
-                </div>
+        <div id="login-section" class="card p-4 mb-4 shadow-sm">
+            <h5>👋 同學你好，請輸入學號開始使用</h5>
+            <div class="input-group mt-3">
+                <input type="text" id="student-id" class="form-control" placeholder="請輸入學號 (例: B11001001)">
+                <button class="btn btn-primary" onclick="login()">進入系統</button>
             </div>
         </div>
 
-        <div id="user-info-section" class="alert alert-success shadow-sm d-none d-flex justify-content-between align-items-center mb-4">
-            <strong id="welcome-message">👋 歡迎！</strong>
-            <button class="btn btn-sm btn-outline-danger fw-bold" onclick="logout()">登出</button>
-        </div>
-
-        <div class="bg-white p-4 rounded shadow border-top border-primary border-5">
-            <h2 class="mb-4 text-primary fw-bold">📦 可借用設備清單</h2>
-            <table class="table table-bordered table-hover text-center align-middle">
-                <thead class="table-dark">
-                    <tr>
-                        <th>設備編號</th>
-                        <th>設備名稱</th>
-                        <th>剩餘數量 / 總數量</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="equipment-list">
-                    <tr><td colspan="4" class="text-muted p-4">正在載入資料...</td></tr>
-                </tbody>
-            </table>
+        <div id="main-section" class="d-none">
+            <div class="alert alert-info d-flex justify-content-between">
+                <span id="welcome-text"></span>
+                <button class="btn btn-sm btn-danger" onclick="logout()">登出</button>
+            </div>
+            <div class="card p-3 shadow-sm">
+                <h4 class="mb-3">📦 可借用設備清單</h4>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr><th>設備名稱</th><th>剩餘數量</th><th>操作</th></tr>
+                        </thead>
+                        <tbody id="device-list"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
         const API_URL = "https://student-api-backend-6bfb.onrender.com";
-        let currentStudentId = localStorage.getItem("student_id"); // 專屬學生的記憶
+        let currentStudentId = localStorage.getItem("student_id");
 
-        function checkLoginState() {
-            if (currentStudentId) {
-                document.getElementById("login-section").classList.add("d-none");
-                document.getElementById("user-info-section").classList.remove("d-none");
-                document.getElementById("welcome-message").innerText = `👋 同學你好，學號：${currentStudentId}`;
-            } else {
-                document.getElementById("login-section").classList.remove("d-none");
-                document.getElementById("user-info-section").classList.add("d-none");
-            }
-        }
+        window.onload = () => { if(currentStudentId) showMain(); };
 
         function login() {
-            const inputVal = document.getElementById("student-id-input").value.trim();
-            if (!inputVal) return alert("學號不能為空！");
-            currentStudentId = inputVal;
-            localStorage.setItem("student_id", currentStudentId);
-            checkLoginState();
+            const id = document.getElementById("student-id").value.trim();
+            if(!id) return alert("請輸入學號");
+            currentStudentId = id;
+            localStorage.setItem("student_id", id);
+            showMain();
+        }
+
+        function showMain() {
+            document.getElementById("login-section").classList.add("d-none");
+            document.getElementById("main-section").classList.remove("d-none");
+            document.getElementById("welcome-text").innerText = `同學你好：${currentStudentId}`;
+            fetchDevices();
         }
 
         function logout() {
-            currentStudentId = null;
             localStorage.removeItem("student_id");
-            document.getElementById("student-id-input").value = "";
-            checkLoginState();
+            location.reload();
         }
 
-        async function fetchEquipments() {
-            try {
-                const response = await fetch(`${API_URL}/equipments`);
-                const data = await response.json();
-                const tbody = document.getElementById("equipment-list");
-                tbody.innerHTML = ""; 
-
-                for (const [eq_id, info] of Object.entries(data)) {
-                    const isOutOfStock = info.剩餘數量 <= 0;
-                    tbody.innerHTML += `
-                        <tr>
-                            <td class="fw-bold">${eq_id}</td>
-                            <td>${info.設備名稱}</td>
-                            <td class="${isOutOfStock ? 'text-danger' : 'text-success'} fw-bold fs-5">
-                                ${info.剩餘數量} <span class="text-muted fs-6">/ ${info.總數量}</span>
-                            </td>
-                            <td>
-                                <button class="btn btn-sm ${isOutOfStock ? 'btn-secondary' : 'btn-success fw-bold'}" 
-                                        onclick="borrowEquipment('${eq_id}')" ${isOutOfStock ? 'disabled' : ''}>
-                                    ✋ 借用
-                                </button>
-                            </td>
-                        </tr>`;
-                }
-            } catch (error) {
-                document.getElementById("equipment-list").innerHTML = `<tr><td colspan="4" class="text-danger">無法連線到伺服器！</td></tr>`;
+        async function fetchDevices() {
+            const res = await fetch(`${API_URL}/equipments`);
+            const data = await res.json();
+            const list = document.getElementById("device-list");
+            list.innerHTML = "";
+            for (const [id, info] of Object.entries(data)) {
+                list.innerHTML += `
+                    <tr>
+                        <td><strong>${info.設備名稱}</strong></td>
+                        <td><span class="badge bg-success">${info.剩餘數量}</span> / ${info.總數量}</td>
+                        <td><button class="btn btn-sm btn-primary" onclick="borrowDevice('${id}')">借用</button></td>
+                    </tr>`;
             }
         }
 
-        async function borrowEquipment(eqId) {
-            if (!currentStudentId) return alert("⚠️ 請先在上方登入學號！");
-            if (!confirm(`確定要以 [${currentStudentId}] 的身分借用 [${eqId}] 嗎？`)) return;
-
+        async function borrowDevice(id) {
             try {
-                const response = await fetch(`${API_URL}/borrow`, { 
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                "設備編號": equipmentId, 
-                "租借人員學號": currentStudentId 
-    })
-});
-                const result = await response.json();
-                if (response.ok) {
-                    alert(`✅ 借用成功！交易編號：${result.交易紀錄.交易編號}`);
-                    fetchEquipments(); 
-                } else {
-                    alert(`❌ 失敗：${result.detail}`);
-                }
-            } catch (error) { alert("連線錯誤！"); }
+                const res = await fetch(`${API_URL}/borrow`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({"設備編號": id, "租借人員學號": currentStudentId})
+                });
+                if(res.ok) { alert("借用成功！請至櫃台領取。"); fetchDevices(); }
+                else { alert("借用失敗，可能庫存不足。"); }
+            } catch(e) { alert("連線錯誤！"); }
         }
-
-        checkLoginState();
-        fetchEquipments();
     </script>
 </body>
 </html>
