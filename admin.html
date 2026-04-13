@@ -265,12 +265,12 @@
             Object.values(data).forEach(t => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>#${t.交易編號}</td>
-                    <td>${t.設備名稱}</td>
-                    <td><span class="badge">${t.租借人員學號}</span></td>
-                    <td>${t.借用時間}</td>
-                    <td><button onclick="confirmReturn(${t.交易編號})">✅ 確認點收</button></td>
-                `;
+            <td>#${t.交易編號}</td>
+            <td>${t.設備名稱}</td>
+            <td><span class="badge">${t.租借人員學號}</span></td>
+                <td>${t.借用時間}</td>
+                <td><button onclick="confirmReturn(${t.交易編號})">✅ 確認點收</button></td>
+        `;
                 listBody.appendChild(row);
             });
         });
