@@ -12,6 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 app = FastAPI(title="學生會設備管理系統-雲端資料庫版")
 
+
 # 1. 允許跨網域請求 (CORS) - 讓 Vercel 網頁可以連到 Render 後端
 app.add_middleware(
     CORSMiddleware,
