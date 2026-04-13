@@ -3,101 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>學生借用區</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .device-card { border-radius: 15px; transition: 0.3s; border: 1px solid #eee; }
-        @media (max-width: 600px) { table { font-size: 0.9rem; } .btn-sm-custom { padding: 5px 10px; } }
-    </style>
+    <title>學生會設備借用系統 - V2.0 購物車版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-light">
-    <nav class="navbar navbar-dark bg-primary mb-4 shadow-sm">
-        <div class="container">
-            <span class="navbar-brand">🎓 學生借用區</span>
-            <button class="btn btn-outline-light btn-sm" onclick="location.href='index.html'">返回首頁</button>
-        </div>
-    </nav>
-
-    <div class="container">
-        <div id="login-section" class="card p-4 mb-4 shadow-sm">
-            <h5>👋 同學你好，請輸入學號開始使用</h5>
-            <div class="input-group mt-3">
-                <input type="text" id="student-id" class="form-control" placeholder="請輸入學號 (例: B11001001)">
-                <button class="btn btn-primary" onclick="login()">進入系統</button>
-            </div>
+<body class="bg-gray-100 min-h-screen p-4">
+    <div class="max-w-md mx-auto space-y-4">
+        
+        <div class="bg-blue-500 text-white p-6 rounded-2xl shadow-lg">
+            <h1 class="text-2xl font-bold">📦 設備借用 (V2.0)</h1>
+            <p id="student-info" class="mt-2 opacity-90">載入中...</p>
         </div>
 
-        <div id="main-section" class="d-none">
-            <div class="alert alert-info d-flex justify-content-between">
-                <span id="welcome-text"></span>
-                <button class="btn btn-sm btn-danger" onclick="logout()">登出</button>
-            </div>
-            <div class="card p-3 shadow-sm">
-                <h4 class="mb-3">📦 可借用設備清單</h4>
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle">
-                        <thead class="table-light">
-                            <tr><th>設備名稱</th><th>剩餘數量</th><th>操作</th></tr>
-                        </thead>
-                        <tbody id="device-list"></tbody>
-                    </table>
+        <div class="bg-white p-4 rounded-2xl shadow-md">
+            <h2 class="text-lg font-bold mb-3 flex items-center">
+                <span class="mr-2">🔍</span> 可借用設備
+            </h2>
+            <div id="equipment-list" class="space-y-3">
                 </div>
-            </div>
         </div>
+
+        <div id="cart-section" class="bg-yellow-50 p-4 rounded-2xl shadow-md border-2 border-yellow-200 hidden">
+            <h2 class="text-lg font-bold mb-3 text-yellow-700 flex items-center">
+                <span class="mr-2">🛒</span> 待借用清單
+            </h2>
+            <ul id="cart-list" class="space-y-2 mb-4 text-sm text-gray-700">
+                </ul>
+            <button onclick="submitBatchBorrow()" 
+                    class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-xl transition">
+                確認借出這些設備
+            </button>
+        </div>
+
     </div>
 
     <script>
-        const API_URL = "https://student-api-backend-6bfb.onrender.com";
-        let currentStudentId = localStorage.getItem("student_id");
+        const API_URL = "你的Render後端網址"; // 👈 請填入你的 Render 網址
+        const sid = localStorage.getItem("studentId");
+        const sname = localStorage.getItem("studentName");
+        let cart = []; // 購物車陣列
 
-        window.onload = () => { if(currentStudentId) showMain(); };
+        if (!sid) location.href = "login.html";
+        document.getElementById("student-info").innerText = `同學你好：${sname} (${sid})`;
 
-        function login() {
-            const id = document.getElementById("student-id").value.trim();
-            if(!id) return alert("請輸入學號");
-            currentStudentId = id;
-            localStorage.setItem("student_id", id);
-            showMain();
-        }
-
-        function showMain() {
-            document.getElementById("login-section").classList.add("d-none");
-            document.getElementById("main-section").classList.remove("d-none");
-            document.getElementById("welcome-text").innerText = `同學你好：${currentStudentId}`;
-            fetchDevices();
-        }
-
-        function logout() {
-            localStorage.removeItem("student_id");
-            location.reload();
-        }
-
-        async function fetchDevices() {
+        // 取得設備
+        async function fetchEquipments() {
             const res = await fetch(`${API_URL}/equipments`);
             const data = await res.json();
-            const list = document.getElementById("device-list");
+            const list = document.getElementById("equipment-list");
             list.innerHTML = "";
-            for (const [id, info] of Object.entries(data)) {
+            
+            for (let id in data) {
+                const item = data[id];
                 list.innerHTML += `
-                    <tr>
-                        <td><strong>${info.設備名稱}</strong></td>
-                        <td><span class="badge bg-success">${info.剩餘數量}</span> / ${info.總數量}</td>
-                        <td><button class="btn btn-sm btn-primary" onclick="borrowDevice('${id}')">借用</button></td>
-                    </tr>`;
+                    <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
+                        <div>
+                            <p class="font-bold">${item.設備名稱}</p>
+                            <p class="text-xs text-gray-500 text-yellow-600">剩餘: ${item.剩餘數量} / ${item.總數量}</p>
+                        </div>
+                        <button onclick="addToCart('${id}', '${item.設備名稱}')" 
+                                ${item.剩餘數量 <= 0 ? 'disabled class="bg-gray-300' : 'class="bg-blue-100 text-blue-600'} 
+                                px-4 py-2 rounded-lg font-bold text-sm">
+                            + 加入
+                        </button>
+                    </div>
+                `;
             }
         }
 
-        async function borrowDevice(id) {
-            try {
-                const res = await fetch(`${API_URL}/borrow`, {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({"設備編號": id, "租借人員學號": currentStudentId})
-                });
-                if(res.ok) { alert("借用成功！請至櫃台領取。"); fetchDevices(); }
-                else { alert("借用失敗，可能庫存不足。"); }
-            } catch(e) { alert("連線錯誤！"); }
+        // 加入購物車
+        function addToCart(id, name) {
+            // 檢查是否重複加入 (如果你想讓同學一次借多個同型號，可以拿掉)
+            if (cart.some(item => item.id === id)) return alert("已在清單中");
+            
+            cart.push({ id, name });
+            renderCart();
         }
+
+        // 渲染購物車 UI
+        function renderCart() {
+            const section = document.getElementById("cart-section");
+            const list = document.getElementById("cart-list");
+            
+            if (cart.length > 0) {
+                section.classList.remove("hidden");
+                list.innerHTML = cart.map((item, index) => `
+                    <li class="flex justify-between items-center bg-white p-2 rounded shadow-sm">
+                        <span>${item.name}</span>
+                        <button onclick="removeFromCart(${index})" class="text-red-400 text-xs">移除</button>
+                    </li>
+                `).join('');
+            } else {
+                section.classList.add("hidden");
+            }
+        }
+
+        function removeFromCart(index) {
+            cart.splice(index, 1);
+            renderCart();
+        }
+
+        // 批量提交給後端
+        async function submitBatchBorrow() {
+            if (!confirm(`確定要借用這 ${cart.length} 項設備嗎？`)) return;
+
+            const response = await fetch(`${API_URL}/borrow_batch`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    "租借人員學號": sid,
+                    "設備清單": cart
+                })
+            });
+
+            if (response.ok) {
+                alert("借用手續完成！請找設備部幹部領取器材。");
+                cart = [];
+                renderCart();
+                fetchEquipments(); // 刷新庫存
+            } else {
+                alert("借用失敗，可能庫存不足或連線逾時。");
+            }
+        }
+
+        fetchEquipments();
     </script>
 </body>
 </html>
