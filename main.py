@@ -1,12 +1,4 @@
-老兵了解！這是一套完整的、已經整合了 Vercel (前端)、Render (後端)、以及 Google Sheets (資料庫) 的全雲端設備租借系統。
 
-這套代碼採用的架構是資管系最標準的「前後端分離」。我幫你把這三天的結晶全部整理在這裡，你可以直接複製備份，這也是你專題報告最重要的附件！
-
-1. 後端程式碼：main.py
-存放位置： GitHub 倉庫根目錄
-關鍵功能： 處理邏輯、連動 Google API、讀取環境變數。
-
-Python
 import os
 import json
 import threading
