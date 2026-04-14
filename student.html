@@ -1,5 +1,3 @@
-// 2026-04-14 最終測試git add .
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -194,24 +192,33 @@
     // 🌟 1. 在 fetch 之前，先叫它印出完整網址
     console.log("🔗 嘗試連線的網址：", `${API_URL}/equipments`);
 
+   function loadEquipments() {
+    // 🌟 監視器 1：印出到底用了哪串網址
+    console.log("👉 準備發送 API 請求！");
+    console.log("🔗 目前的 API_URL 是：", API_URL);
+    console.log("🔗 完整請求網址：", `${API_URL}/equipments`);
+
     fetch(`${API_URL}/equipments`)
         .then(response => {
-            // 🌟 2. 順便印出後端的狀態碼 (例如 200 或 404)
-            console.log("📡 後端回應狀態碼：", response.status);
-            
-            if (!response.ok) throw new Error('連線失敗');
+            // 🌟 監視器 2：印出後端回應狀態
+            console.log("📡 收到後端回應，狀態碼：", response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             return response.json();
         })
         .then(data => {
+            console.log("✅ 成功拿到資料：", data);
             renderEquipments(data);
         })
         .catch(error => {
-            // 🌟 3. 在報錯時印出更詳細的原因
-            console.error('❌ 詳細錯誤訊息：', error.message);
-            alert("連線失敗");
+            // 🌟 監視器 3：把真正的死因印出來
+            console.error("❌ 連線徹底失敗，原因：", error);
+            alert("連線失敗，請按 F12 查看 Console");
         });
+        }
 }
-
+        
         fetchEquipments();
     </script>
 </body>
