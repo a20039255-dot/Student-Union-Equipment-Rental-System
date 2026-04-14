@@ -4,21 +4,21 @@ import threading
 import time
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware  # 🌟 只要留一個 import 就好
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-app = FastAPI(title="學生會設備管理系統 - V4.0 權限稽核版")
+# 1. 建立唯一的大腦，並給它一個帥氣的標題
+app = FastAPI(title="學生會設備管理系統 - V5.0 企業雲端版")
 
-# 1. 跨網域設定
+# 2. 跨網域通行證設定 (只要寫這一次就好)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],           # 允許所有網頁 (包括 Vercel) 連線
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],           # 允許所有方式 (GET, POST)
+    allow_headers=["*"],           # 允許所有標頭
 )
-
 # 2. Google Sheets 初始化
 SCOPE = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/drive']
 
