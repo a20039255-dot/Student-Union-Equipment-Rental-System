@@ -85,11 +85,8 @@ def sync_all_from_cloud():
             
             status = str(r.get("狀態"))
             if status in ["借用中", "待審核"]:
-                days_diff = 0
-                try:
-                    borrow_time = datetime.strptime(str(r["借用時間"]), "%Y-%m-%d %H:%M")
-                    days_diff = (now - borrow_time).days
-                except: pass 
+                # 🌟 這裡要讀取試算表第 7 欄，標題通常是「點收幹部」
+                handler = str(r.get("點收幹部", "尚未處理"))
 
                 new_transactions[t_id] = {
                     "交易編號": t_id, 
@@ -97,12 +94,11 @@ def sync_all_from_cloud():
                     "租借人員學號": str(r.get("借用人學號", "")), 
                     "租借人員姓名": str(r.get("借用人姓名", "未知")),
                     "借用時間": str(r.get("借用時間", "")),
-                    "已借用天數": days_diff,
-                    "狀態": status
+                    "狀態": status,
+                    "處理人員": handler # 🌟 將處理人存入字典傳給前端
                 }
         transactions = new_transactions
         transaction_id_counter = max_id + 1
-        print(f"✅ [同步成功] 待處理筆數: {len(transactions)}")
     except Exception as e:
         print(f"⚠️ [同步失敗]: {e}")
 
