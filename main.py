@@ -186,6 +186,59 @@ def 批量借用設備(data: dict):
         sync_all_from_cloud() # 最後同步一次確保記憶體跟雲端一致
         return {"成功": True}
 
+# 1. 修改原本的 borrow_batch，讓狀態預設為 "待審核"
+@app.post("/borrow_batch")
+def 批量借用設備(data: dict):
+    global transaction_id_counter
+    sid = data.get("租借人員學號")
+    sname = data.get("租借人員姓名")
+    items = data.get("設備清單")
+    
+    with db_lock:
+        for item in items:
+            eid = item["id"]
+            borrow_qty = int(item["qty"])
+            # 注意：這裡不扣庫存，只寫入紀錄
+            for _ in range(borrow_qty):
+                t_id = transaction_id_counter
+                b_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+                # 🌟 狀態設為 "待審核"
+                sheets["log"].append_row([t_id, item["name"], sid, sname, b_time, "待審核", ""])
+                transaction_id_counter += 1
+                time.sleep(0.5)
+        
+        sync_all_from_cloud()
+        return {"成功": True, "訊息": "申請已送出，請等待幹部審核。"}
+
+# 2. 🌟 新增審核動作 API
+@app.post("/admin/approve")
+def 審核申請(data: dict):
+    tid = int(data.get("交易編號"))
+    action = data.get("動作") # "核准" 或 "駁回"
+    admin_name = data.get("點收幹部")
+    
+    with db_lock:
+        cell_log = sheets["log"].find(str(tid), in_column=1)
+        if not cell_log: return {"成功": False, "訊息": "找不到該筆紀錄"}
+        
+        equip_name = sheets["log"].cell(cell_log.row, 2).value
+        
+        if action == "核准":
+            # 找設備扣庫存
+            cell_equip = sheets["equip"].find(equip_name, in_column=2)
+            current_qty = int(sheets["equip"].cell(cell_equip.row, 4).value)
+            if current_qty > 0:
+                sheets["equip"].update_cell(cell_equip.row, 4, current_qty - 1)
+                sheets["log"].update_cell(cell_log.row, 6, "借用中") # 變更狀態
+                sheets["log"].update_cell(cell_log.row, 7, admin_name) # 記錄誰核准的
+            else:
+                return {"成功": False, "訊息": "庫存不足，無法核准"}
+        else:
+            sheets["log"].update_cell(cell_log.row, 6, "已駁回")
+            
+        sync_all_from_cloud()
+        return {"成功": True}
+
 @app.get("/transactions")
 def 取得待歸還清單():
     sync_all_from_cloud()
