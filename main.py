@@ -1,6 +1,7 @@
 import os
 import json
 import threading
+import time
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -226,6 +227,10 @@ def 依學號批量歸還(data: dict):
                     sheets["log"].update_cell(cell_log.row, 7, admin_name) 
             except Exception as e: 
                 pass
+                # 💡 核心煞車系統：每處理完一個設備，強制休息 1.5 秒
+            time.sleep(1.5)
+
+            return {"成功": True, "歸還數量": len(tids_to_return)}
 
 if __name__ == "__main__":
     import uvicorn
