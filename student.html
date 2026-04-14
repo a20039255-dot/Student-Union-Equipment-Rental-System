@@ -3,48 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>學生會設備借用</title>
+    <title>學生會設備借用 - V4.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 讓捲動軸好看一點 */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen p-4">
+<body class="bg-gray-100 min-h-screen p-4 pb-20">
     <div class="max-w-md mx-auto space-y-4">
-        <div class="bg-blue-500 text-white p-6 rounded-2xl shadow-lg flex justify-between items-center">
+        
+        <div class="bg-blue-600 text-white p-6 rounded-2xl shadow-lg flex justify-between items-center">
             <div>
                 <h1 class="text-2xl font-bold">📦 設備借用</h1>
-                <p id="student-info" class="mt-1 text-sm opacity-90">載入中...</p>
+                <p id="student-info" class="mt-1 text-sm opacity-90">身分驗證中...</p>
             </div>
-            <button onclick="logout()" class="bg-blue-700 hover:bg-blue-800 px-3 py-2 rounded text-sm transition font-bold shadow">登出</button>
+            <button onclick="logout()" class="bg-blue-800 hover:bg-blue-900 px-3 py-2 rounded-lg text-sm transition font-bold shadow">登出</button>
         </div>
 
-        <div class="bg-white p-4 rounded-2xl shadow-md">
-            <h2 class="text-lg font-bold mb-3 flex items-center text-gray-800"><span class="mr-2">🔍</span> 可借用設備</h2>
+        <div class="bg-white p-4 rounded-2xl shadow-md border border-gray-100">
+            <h2 class="text-lg font-bold mb-4 flex items-center text-gray-800">
+                <span class="mr-2">🔍</span> 可借用設備
+            </h2>
             <div id="equipment-list" class="space-y-3">
-                <p class="text-center text-gray-500 py-6 animate-pulse font-bold">📡 正在連線至雲端設備庫...</p>
+                <p class="text-center text-gray-500 py-6 animate-pulse">📡 正在同步雲端庫存...</p>
             </div>
         </div>
 
-        <div id="cart-section" class="bg-yellow-50 p-4 rounded-2xl shadow-md border-2 border-yellow-200 hidden sticky bottom-4">
-            <h2 class="text-lg font-bold mb-3 text-yellow-700 flex items-center"><span class="mr-2">🛒</span> 待借用清單</h2>
-            <ul id="cart-list" class="space-y-2 mb-4 text-sm text-gray-700"></ul>
-            <button onclick="submitBatchBorrow()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-xl transition shadow-md">確認借出</button>
+        <div id="cart-section" class="bg-white p-5 rounded-t-3xl shadow-[0_-10px_25px_-5px_rgba(0,0,0,0.1)] border-t-2 border-yellow-400 hidden fixed bottom-0 left-0 right-0 max-w-md mx-auto z-50">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-yellow-700 flex items-center">
+                    <span class="mr-2">🛒</span> 待借用清單
+                </h2>
+                <span id="cart-total-count" class="bg-yellow-200 text-yellow-800 text-xs font-bold px-2 py-1 rounded-full">0 項</span>
+            </div>
+            
+            <ul id="cart-list" class="space-y-2 mb-4 text-sm text-gray-700 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                </ul>
+            
+            <button onclick="submitBatchBorrow()" 
+                    class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 rounded-2xl transition shadow-lg active:scale-95">
+                確認借出這些設備
+            </button>
         </div>
     </div>
 
     <script>
-        // ⚠️ 替換成你的 Render 或 Cloud Run 網址
         const API_URL = "https://student-api-backend-6bfb.onrender.com"; 
         const sid = localStorage.getItem("studentId");
         const sname = localStorage.getItem("studentName");
-        let cart = []; 
+        let cart = []; // 存原始資料 [{id, name}, ...]
 
         if (!sid) window.location.href = "login.html";
         else document.getElementById("student-info").innerText = `同學你好：${sname} (${sid})`;
 
-        function logout() {
-            localStorage.clear();
-            window.location.href = "login.html";
-        }
+        function logout() { localStorage.clear(); window.location.href = "login.html"; }
 
+        // 1. 抓取設備並生成下拉選單
         async function fetchEquipments() {
             try {
                 const res = await fetch(`${API_URL}/equipments`);
@@ -54,49 +71,76 @@
                 
                 for (let id in data) {
                     const item = data[id];
+                    // 計算該品項最多還能選幾個 (庫存與上限取最小值)
+                    const maxSelectable = Math.min(item.剩餘數量, item.借用上限);
+                    let options = "";
+                    for(let i=1; i<=maxSelectable; i++) options += `<option value="${i}">${i}</option>`;
+
                     list.innerHTML += `
-                        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
-                            <div>
+                        <div class="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-200 shadow-sm">
+                            <div class="flex-1">
                                 <p class="font-bold text-gray-800 text-lg">${item.設備名稱}</p>
-                                <p class="text-sm text-gray-600 mt-1">剩餘庫存: <span class="font-bold text-blue-600 text-lg">${item.剩餘數量}</span></p>
-                                <p class="text-xs text-yellow-600 mt-1 bg-yellow-100 inline-block px-2 py-0.5 rounded">每人限借: ${item.借用上限}</p>
+                                <p class="text-sm text-gray-600">庫存: <span class="font-bold text-blue-600">${item.剩餘數量}</span> | 限借: ${item.借用上限}</p>
                             </div>
-                            <button onclick="addToCart('${id}', '${item.設備名稱}', ${item.剩餘數量}, ${item.借用上限})" 
-                                    class="${item.剩餘數量 <= 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'} px-5 py-3 rounded-xl font-bold text-sm"
-                                    ${item.剩餘數量 <= 0 ? 'disabled' : ''}>+ 加入</button>
+                            <div class="flex items-center gap-2">
+                                <select id="qty-${id}" class="border border-gray-300 rounded-xl px-2 py-2 bg-white font-bold focus:ring-2 focus:ring-blue-400" ${maxSelectable <= 0 ? 'disabled' : ''}>
+                                    ${options || '<option>0</option>'}
+                                </select>
+                                <button onclick="addToCart('${id}', '${item.設備名稱}', ${item.剩餘數量}, ${item.借用上限})" 
+                                        class="${maxSelectable <= 0 ? 'bg-gray-300 text-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'} px-4 py-2 rounded-xl font-bold text-sm transition"
+                                        ${maxSelectable <= 0 ? 'disabled' : ''}>+ 加入</button>
+                            </div>
                         </div>`;
                 }
-            } catch (e) {
-                document.getElementById("equipment-list").innerHTML = "<p class='text-red-500 font-bold text-center'>連線異常</p>";
-            }
+            } catch (e) { alert("連線失敗"); }
         }
 
+        // 2. 加入購物車 (支援數量)
         function addToCart(id, name, availableQty, maxLimit) {
-            const currentCount = cart.filter(item => item.id === id).length;
-            if (currentCount >= maxLimit) return alert(`❌ 【${name}】每人限借 ${maxLimit} 個喔！`);
-            if (currentCount >= availableQty) return alert(`⚠️ 庫存不足。`);
-            cart.push({ id, name });
+            const addCount = parseInt(document.getElementById(`qty-${id}`).value);
+            const inCartCount = cart.filter(i => i.id === id).length;
+
+            if (inCartCount + addCount > maxLimit) return alert(`❌ 超過每人限借數量 (${maxLimit})！`);
+            if (inCartCount + addCount > availableQty) return alert(`⚠️ 庫存不足！`);
+
+            for(let i=0; i<addCount; i++) cart.push({ id, name });
             renderCart();
         }
 
+        // 3. 聚合顯示 (核心邏輯：將 Array 轉成物件統計)
         function renderCart() {
             const section = document.getElementById("cart-section");
             const list = document.getElementById("cart-list");
+            document.getElementById("cart-total-count").innerText = `${cart.length} 項`;
+            
             if (cart.length > 0) {
                 section.classList.remove("hidden");
-                list.innerHTML = cart.map((item, i) => `
-                    <li class="flex justify-between items-center bg-white p-2 rounded-lg border shadow-sm">
-                        <span class="font-bold">${item.name}</span>
-                        <button onclick="removeFromCart(${i})" class="text-red-500 font-bold px-2">移除</button>
+                // 💡 使用 reduce 進行分組統計
+                const grouped = cart.reduce((acc, curr) => {
+                    acc[curr.id] = acc[curr.id] || { name: curr.name, count: 0 };
+                    acc[curr.id].count++;
+                    return acc;
+                }, {});
+
+                list.innerHTML = Object.keys(grouped).map(id => `
+                    <li class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-gray-800">${grouped[id].name}</span>
+                            <span class="text-blue-600 font-black text-base">x ${grouped[id].count}</span>
+                        </div>
+                        <button onclick="removeFromCart('${id}')" class="text-red-500 hover:bg-red-50 px-3 py-1 rounded-lg text-xs font-bold transition">移除項目</button>
                     </li>`).join('');
             } else section.classList.add("hidden");
         }
 
-        function removeFromCart(i) { cart.splice(i, 1); renderCart(); }
+        function removeFromCart(id) {
+            cart = cart.filter(i => i.id !== id); // 移除該種類全部
+            renderCart();
+        }
 
         async function submitBatchBorrow() {
             if (cart.length === 0) return;
-            if (!confirm(`確定借出 ${cart.length} 項設備？`)) return;
+            if (!confirm(`確定借出這 ${cart.length} 件設備嗎？`)) return;
 
             try {
                 const res = await fetch(`${API_URL}/borrow_batch`, {
@@ -105,11 +149,12 @@
                     body: JSON.stringify({ "租借人員學號": sid, "租借人員姓名": sname, "設備清單": cart })
                 });
                 if (res.ok) {
-                    alert("✅ 借用完成！請找幹部領取。");
-                    cart = []; renderCart(); fetchEquipments(); 
-                } else alert("❌ 借用失敗。");
-            } catch (e) { alert("⚠️ 網路異常。"); }
+                    alert("✅ 借用完成！");
+                    cart = []; renderCart(); fetchEquipments();
+                }
+            } catch (e) { alert("連線異常"); }
         }
+
         fetchEquipments();
     </script>
 </body>

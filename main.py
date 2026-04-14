@@ -183,16 +183,21 @@ def 單筆歸還(data: dict):
         try:
             cell_equip = sheets["equip"].find(record["設備名稱"])
             if cell_equip:
+                # 💡 新增：同時抓取「總數量(第3欄)」與「剩餘數量(第4欄)」
+                total_qty = int(sheets["equip"].cell(cell_equip.row, 3).value)
                 current_qty = int(sheets["equip"].cell(cell_equip.row, 4).value)
-                sheets["equip"].update_cell(cell_equip.row, 4, current_qty + 1)
+                
+                # 💡 核心防呆：歸還後的數量，絕對不能超過總數量 (取兩者較小值)
+                new_qty = min(current_qty + 1, total_qty)
+                
+                sheets["equip"].update_cell(cell_equip.row, 4, new_qty)
             
             cell_log = sheets["log"].find(str(tid))
             if cell_log:
-                sheets["log"].update_cell(cell_log.row, 6, "已歸還") # F欄
-                sheets["log"].update_cell(cell_log.row, 7, admin_name) # G欄
+                sheets["log"].update_cell(cell_log.row, 6, "已歸還") 
+                sheets["log"].update_cell(cell_log.row, 7, admin_name) 
         except Exception as e:
             print(f"⚠️ 歸還同步錯誤: {e}")
-        return {"成功": True}
 
 @app.post("/return_by_student")
 def 依學號批量歸還(data: dict):
@@ -207,15 +212,20 @@ def 依學號批量歸還(data: dict):
             try:
                 cell_equip = sheets["equip"].find(record["設備名稱"])
                 if cell_equip:
+                    # 💡 同樣的防呆機制
+                    total_qty = int(sheets["equip"].cell(cell_equip.row, 3).value)
                     current_qty = int(sheets["equip"].cell(cell_equip.row, 4).value)
-                    sheets["equip"].update_cell(cell_equip.row, 4, current_qty + 1)
+                    
+                    new_qty = min(current_qty + 1, total_qty)
+                    
+                    sheets["equip"].update_cell(cell_equip.row, 4, new_qty)
                 
                 cell_log = sheets["log"].find(str(tid))
                 if cell_log:
-                    sheets["log"].update_cell(cell_log.row, 6, "已歸還") # F欄
-                    sheets["log"].update_cell(cell_log.row, 7, admin_name) # G欄
-            except Exception as e: pass
-    return {"成功": True, "歸還數量": len(tids_to_return)}
+                    sheets["log"].update_cell(cell_log.row, 6, "已歸還") 
+                    sheets["log"].update_cell(cell_log.row, 7, admin_name) 
+            except Exception as e: 
+                pass
 
 if __name__ == "__main__":
     import uvicorn
