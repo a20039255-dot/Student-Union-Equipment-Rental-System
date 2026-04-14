@@ -231,26 +231,42 @@ def return_item(data: dict):
 # 🛠️ 管理端：批量歸還 (只處理借用中)
 @app.post("/return_by_student")
 def return_by_student(data: dict):
-    sid = data.get("學號")
+    query_code = str(data.get("學號")).strip() # 抓取部長輸入的末三碼
     admin_name = data.get("點收幹部")
     count = 0
+    
+    if len(query_code) < 3:
+        return {"成功": False, "訊息": "請輸入至少 3 碼以確保準確性"}
+
     with db_lock:
-        # 只過濾出該學生的「借用中」項目
-        to_return = [tid for tid, req in transactions.items() 
-                     if req["租借人員學號"] == sid and req["狀態"] == "借用中"]
+        # 🌟 核心邏輯：取出資料庫學號的最後 N 位數進行比對
+        to_return = []
+        for tid, req in transactions.items():
+            full_sid = str(req["租借人員學號"])
+            # 檢查狀態是否為借用中，且學號結尾是否符合輸入內容
+            if req["狀態"] == "借用中" and full_sid.endswith(query_code):
+                to_return.append(tid)
         
+        if not to_return:
+            return {"成功": False, "訊息": f"找不到學號結尾為 '{query_code}' 且借用中的紀錄"}
+
+        # 執行歸還
         for tid in to_return:
             equip_name = transactions[tid]["設備名稱"]
             cell_log = sheets["log"].find(str(tid), in_column=1)
             if cell_log:
+                # 1. 更新 Log 狀態
                 sheets["log"].update_cell(cell_log.row, 6, "已歸還")
                 sheets["log"].update_cell(cell_log.row, 7, admin_name)
+                
+                # 2. 回填設備庫存
                 cell_equip = sheets["equip"].find(equip_name, in_column=2)
                 if cell_equip:
                     curr_stock = int(sheets["equip"].cell(cell_equip.row, 4).value)
                     sheets["equip"].update_cell(cell_equip.row, 4, curr_stock + 1)
+                
                 count += 1
-                time.sleep(0.5)
+                time.sleep(0.5) # 保護 Google Sheets API
         
         sync_all_from_cloud()
         return {"成功": True, "歸還數量": count}
