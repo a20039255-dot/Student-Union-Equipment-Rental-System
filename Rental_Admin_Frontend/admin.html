@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>設備部 - 管理後台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+
+    <script>
+        // 🌟 幹部後台一樣共用這個後端大腦網址
+        const API_URL = "https://student-api-174932950003.asia-east1.run.app";
+
+        window.onload = function() {
+            loadAdminData();
+        };
+
+        function loadAdminData() {
+            // 這裡放你原本去抓取「借用紀錄」或「管理清單」的 fetch 邏輯
+            // 寫法與前台完全一樣，記得加上 console.log 方便未來除錯
+            console.log("👉 設備部後台準備請求資料...");
+            
+            fetch(`${API_URL}/equipments`) // 或其他你設定的後台 API 路徑
+                .then(response => response.json())
+                .then(data => {
+                    console.log("✅ 後台資料讀取成功");
+                    // 渲染後台畫面
+                })
+                .catch(error => {
+                    console.error("❌ 後台連線失敗：", error);
+                });
+        }
+    </script>
+</body>
+</html>

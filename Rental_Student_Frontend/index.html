@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學生會設備系統 - 登入</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+
+    <div id="login-container">
+        <button onclick="studentLogin()" class="bg-blue-500 text-white px-4 py-2 rounded">進入借用系統</button>
+    </div>
+
+    <script>
+        function studentLogin() {
+            // 這裡可以加入你檢查學號或姓名的邏輯
+            // 登入成功後，因為已經在同一個專案內，直接跳轉到同層的 student.html
+            console.log("學生登入成功，準備跳轉...");
+            window.location.href = 'student.html';
+        }
+    </script>
+</body>
+</html>

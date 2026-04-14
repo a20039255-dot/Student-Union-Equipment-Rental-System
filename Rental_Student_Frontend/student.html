@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>設備借用系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+
+    <div id="app">
+        </div>
+
+    <script>
+        // 🌟 正確且無斜槓的後端大腦網址
+        const API_URL = "https://student-api-174932950003.asia-east1.run.app";
+
+        // 頁面載入時自動去抓資料
+        window.onload = function() {
+            loadEquipments();
+        };
+
+        function loadEquipments() {
+            console.log("👉 準備發送 API 請求！");
+            console.log("🔗 完整請求網址：", `${API_URL}/equipments`);
+
+            fetch(`${API_URL}/equipments`)
+                .then(response => {
+                    console.log("📡 收到後端回應，狀態碼：", response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log("✅ 成功拿到資料：", data);
+                    // 將資料傳給你原本寫好的渲染函數
+                    renderEquipments(data);
+                })
+                .catch(error => {
+                    console.error("❌ 連線徹底失敗，原因：", error);
+                    alert("連線失敗，請按 F12 查看 Console");
+                });
+        }
+
+        function renderEquipments(data) {
+            // 這裡放你原本把 JSON 資料畫成網頁清單的迴圈程式碼
+        }
+    </script>
+</body>
+</html>
