@@ -60,24 +60,38 @@
                             <p class="font-bold">${item.設備名稱}</p>
                             <p class="text-xs text-gray-500 text-yellow-600">剩餘: ${item.剩餘數量} / ${item.總數量}</p>
                         </div>
-                        <button onclick="addToCart('${id}', '${item.設備名稱}')" 
-                                ${item.剩餘數量 <= 0 ? 'disabled class="bg-gray-300' : 'class="bg-blue-100 text-blue-600'} 
-                                px-4 py-2 rounded-lg font-bold text-sm">
-                            + 加入
-                        </button>
+                        // 請找到 <button onclick="addToCart... 這行，把它替換成下面這樣：
+// 注意參數多傳了一個 ${item.借用上限}
+<button onclick="addToCart('${id}', '${item.設備名稱}', ${item.剩餘數量}, ${item.借用上限})" 
+        ${item.剩餘數量 <= 0 ? 'disabled class="bg-gray-300' : 'class="bg-blue-100 text-blue-600'} 
+        px-4 py-2 rounded-lg font-bold text-sm">
+    + 加入
+</button>
                     </div>
                 `;
             }
         }
 
         // 加入購物車
-        function addToCart(id, name) {
-            // 檢查是否重複加入 (如果你想讓同學一次借多個同型號，可以拿掉)
-            if (cart.some(item => item.id === id)) return alert("已在清單中");
-            
-            cart.push({ id, name });
-            renderCart();
-        }
+        // 升級版 V2.2：加入購物車 (支援各自獨立上限)
+function addToCart(id, name, availableQty, maxLimit) {
+    // 計算目前購物車裡，已經裝了幾個一樣的設備
+    const currentCount = cart.filter(item => item.id === id).length;
+
+    // 檢查是否超過【該設備專屬】的部長規定上限
+    if (currentCount >= maxLimit) {
+        return alert(`❌ 為了公平起見，【${name}】每人最多只能借 ${maxLimit} 個喔！`);
+    }
+
+    // 檢查是否超過實際剩餘庫存
+    if (currentCount >= availableQty) {
+        return alert(`⚠️ 庫存不夠囉！【${name}】目前只剩 ${availableQty} 個。`);
+    }
+    
+    // 通過檢查，正式加入購物車
+    cart.push({ id, name });
+    renderCart();
+}
 
         // 渲染購物車 UI
         function renderCart() {
