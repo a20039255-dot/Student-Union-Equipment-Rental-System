@@ -3,19 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>學生會設備借用系統 - V2.2 購物車版</title>
+    <title>學生會設備借用系統 - V2.2 究極版</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen p-4">
     <div class="max-w-md mx-auto space-y-4">
         
-        <div class="bg-blue-500 text-white p-6 rounded-2xl shadow-lg">
-            <h1 class="text-2xl font-bold">📦 設備借用 (V2.0)</h1>
-            <p id="student-info" class="mt-2 opacity-90">載入中...</p>
+        <div class="bg-blue-500 text-white p-6 rounded-2xl shadow-lg flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold">📦 設備借用 (V2.0)</h1>
+                <p id="student-info" class="mt-2 text-sm opacity-90">載入中...</p>
+            </div>
+            <button onclick="logout()" class="bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded text-sm transition font-bold shadow">登出</button>
         </div>
 
         <div class="bg-white p-4 rounded-2xl shadow-md">
-            <h2 class="text-lg font-bold mb-3 flex items-center">
+            <h2 class="text-lg font-bold mb-3 flex items-center text-gray-800">
                 <span class="mr-2">🔍</span> 可借用設備
             </h2>
             <div id="equipment-list" class="space-y-3">
@@ -29,7 +32,7 @@
             <ul id="cart-list" class="space-y-2 mb-4 text-sm text-gray-700">
                 </ul>
             <button onclick="submitBatchBorrow()" 
-                    class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-xl transition">
+                    class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-xl transition shadow-md">
                 確認借出這些設備
             </button>
         </div>
@@ -37,59 +40,75 @@
     </div>
 
     <script>
-        const API_URL = "https://student-api-backend-6bfb.onrender.com";// 👈 請填入你的 Render 網址
+        // 這是你專屬的 Render 後端網址
+        const API_URL = "https://student-api-backend-6bfb.onrender.com"; 
+        
         const sid = localStorage.getItem("studentId");
         const sname = localStorage.getItem("studentName");
-        let cart = []; // 購物車陣列
+        let cart = []; 
 
-        if (!sid) location.href = "login.html";
-        document.getElementById("student-info").innerText = `同學你好：${sname} (${sid})`;
+        // 登入檢查機制
+        if (!sid) {
+            window.location.href = "login.html";
+        } else {
+            document.getElementById("student-info").innerText = `同學你好：${sname} (${sid})`;
+        }
 
-        // 取得設備
+        // 登出功能
+        function logout() {
+            localStorage.clear();
+            window.location.href = "login.html";
+        }
+
+        // 取得設備並生成畫面
+       // 取得設備並生成畫面
         async function fetchEquipments() {
-            const res = await fetch(`${API_URL}/equipments`);
-            const data = await res.json();
-            const list = document.getElementById("equipment-list");
-            list.innerHTML = "";
+            try {
+                const res = await fetch(`${API_URL}/equipments`);
+                const data = await res.json(); // 👈 剛才就是這行最重要的「大腦」不見了！
+                const list = document.getElementById("equipment-list");
+                list.innerHTML = "";
+                
+                for (let id in data) {
+                    const item = data[id];
+                    
+                    list.innerHTML += `
+                        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
+                            <div>
+                                <p class="font-bold text-gray-800 text-lg">${item.設備名稱}</p>
+                                <p class="text-sm text-gray-600 mt-1">剩餘庫存: <span class="font-bold text-blue-600">${item.剩餘數量}</span></p>
+                                <p class="text-xs text-yellow-600 mt-1 font-medium">每人限借: ${item.借用上限} 個</p>
+                            </div>
+                            <button onclick="addToCart('${id}', '${item.設備名稱}', ${item.剩餘數量}, ${item.借用上限})" 
+                                    class="${item.剩餘數量 <= 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-100 hover:bg-blue-200 text-blue-700 transition'} px-4 py-2 rounded-lg font-bold text-sm shadow-sm"
+                                    ${item.剩餘數量 <= 0 ? 'disabled' : ''}>
+                                + 加入
+                            </button>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error("無法連接到伺服器", error);
+                document.getElementById("equipment-list").innerHTML = "<p class='text-red-500 font-bold p-4 text-center'>無法連線至伺服器，請確認後端已啟動。</p>";
             }
-            for (let id in data) {
-                const item = data[id];
-                list.innerHTML += `
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
-        <div>
-            <p class="font-bold">${item.設備名稱}</p>
-            <p class="text-xs text-gray-500 mt-1">剩餘庫存: <span class="font-bold text-blue-600">${item.剩餘數量}</span></p>
-            <p class="text-xs text-yellow-600 mt-1">每人限借: ${item.借用上限} 個</p>
-        </div>
-        <button onclick="addToCart('${id}', '${item.設備名稱}', ${item.剩餘數量}, ${item.借用上限})" 
-                ${item.剩餘數量 <= 0 ? 'disabled class="bg-gray-300' : 'class="bg-blue-100 hover:bg-blue-200 text-blue-700 transition'} 
-                px-4 py-2 rounded-lg font-bold text-sm shadow-sm">
-            + 加入
-        </button>
-    </div>
-`;}
+        }
+        // 加入購物車邏輯 (防呆機制)
+        function addToCart(id, name, availableQty, maxLimit) {
+            const currentCount = cart.filter(item => item.id === id).length;
 
-        // 加入購物車
-        // 升級版 V2.2：加入購物車 (支援各自獨立上限)
-function addToCart(id, name, availableQty, maxLimit) {
-    // 計算目前購物車裡，已經裝了幾個一樣的設備
-    const currentCount = cart.filter(item => item.id === id).length;
+            if (currentCount >= maxLimit) {
+                return alert(`❌ 為了公平起見，【${name}】每人最多只能借 ${maxLimit} 個喔！`);
+            }
 
-    // 檢查是否超過【該設備專屬】的部長規定上限
-    if (currentCount >= maxLimit) {
-        return alert(`❌ 為了公平起見，【${name}】每人最多只能借 ${maxLimit} 個喔！`);
-    }
+            if (currentCount >= availableQty) {
+                return alert(`⚠️ 庫存不夠囉！【${name}】目前只剩 ${availableQty} 個。`);
+            }
+            
+            cart.push({ id, name });
+            renderCart();
+        }
 
-    if (currentCount >= availableQty) {
-        return alert(`⚠️ 庫存不夠囉！【${name}】目前只剩 ${availableQty} 個。`);
-    }
-    
-    // 通過檢查，正式加入購物車
-    cart.push({ id, name });
-    renderCart();
-}
-
-        // 渲染購物車 UI
+        // 繪製購物車畫面
         function renderCart() {
             const section = document.getElementById("cart-section");
             const list = document.getElementById("cart-list");
@@ -97,9 +116,9 @@ function addToCart(id, name, availableQty, maxLimit) {
             if (cart.length > 0) {
                 section.classList.remove("hidden");
                 list.innerHTML = cart.map((item, index) => `
-                    <li class="flex justify-between items-center bg-white p-2 rounded shadow-sm">
-                        <span>${item.name}</span>
-                        <button onclick="removeFromCart(${index})" class="text-red-400 text-xs">移除</button>
+                    <li class="flex justify-between items-center bg-white p-2 rounded border border-gray-200 shadow-sm">
+                        <span class="font-medium text-gray-800">${item.name}</span>
+                        <button onclick="removeFromCart(${index})" class="text-red-500 hover:bg-red-50 px-3 py-1 rounded-md text-xs transition font-bold">移除</button>
                     </li>
                 `).join('');
             } else {
@@ -107,34 +126,41 @@ function addToCart(id, name, availableQty, maxLimit) {
             }
         }
 
+        // 移除購物車項目
         function removeFromCart(index) {
             cart.splice(index, 1);
             renderCart();
         }
 
-        // 批量提交給後端
+        // 送出借用清單
         async function submitBatchBorrow() {
+            if (cart.length === 0) return;
             if (!confirm(`確定要借用這 ${cart.length} 項設備嗎？`)) return;
 
-            const response = await fetch(`${API_URL}/borrow_batch`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    "租借人員學號": sid,
-                    "設備清單": cart
-                })
-            });
+            try {
+                const response = await fetch(`${API_URL}/borrow_batch`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        "租借人員學號": sid,
+                        "設備清單": cart
+                    })
+                });
 
-            if (response.ok) {
-                alert("借用手續完成！請找設備部幹部領取器材。");
-                cart = [];
-                renderCart();
-                fetchEquipments(); // 刷新庫存
-            } else {
-                alert("借用失敗，可能庫存不足或連線逾時。");
+                if (response.ok) {
+                    alert("✅ 借用手續完成！請找幹部領取器材。");
+                    cart = [];
+                    renderCart();
+                    fetchEquipments(); // 重新抓取最新庫存
+                } else {
+                    alert("❌ 借用失敗，可能庫存不足或連線異常。");
+                }
+            } catch (error) {
+                alert("⚠️ 網路連線異常，請稍後再試。");
             }
         }
 
+        // 網頁載入時自動執行
         fetchEquipments();
     </script>
 </body>
