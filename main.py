@@ -146,27 +146,44 @@ def 幹部登入(data: dict):
 def 批量借用設備(data: dict):
     global transaction_id_counter
     sid = data.get("租借人員學號")
-    sname = data.get("租借人員姓名") # 接收學生本名
-    items = data.get("設備清單")
+    sname = data.get("租借人員姓名")
+    items = data.get("設備清單")  # 這裡拿到的格式是 [{'id': 'E01', 'name': '...', 'qty': 3}, ...]
     
     with db_lock:
         for item in items:
             eid = item["id"]
-            if eid in equipments and equipments[eid]["剩餘數量"] > 0:
-                equipments[eid]["剩餘數量"] -= 1
-                t_id = transaction_id_counter
+            borrow_qty = int(item["qty"]) # 🌟 關鍵：拿到學生真正要借的數量
+            
+            # 檢查設備是否存在且庫存足夠
+            if eid in equipments and equipments[eid]["剩餘數量"] >= borrow_qty:
+                # 1. 減少記憶體中的庫存
+                equipments[eid]["剩餘數量"] -= borrow_qty
+                
                 b_time = datetime.now().strftime("%Y-%m-%d %H:%M")
                 
                 try:
-                    # 依序寫入：交易編號, 設備名稱, 學號, 姓名, 借用時間, 狀態, 點收幹部(預設空)
-                    sheets["log"].append_row([t_id, equipments[eid]["設備名稱"], sid, sname, b_time, "借用中", ""])
+                    # 🌟 2. 根據數量，寫入多行紀錄到 Log (這樣點收才能一項一項點)
+                    # 如果你希望一行紀錄代表多個，也可以只寫一行，但點收邏輯會變複雜
+                    # 建議：依照借用數量跑迴圈，每一件設備都是獨立的交易編號
+                    for _ in range(borrow_qty):
+                        t_id = transaction_id_counter
+                        sheets["log"].append_row([t_id, equipments[eid]["設備名稱"], sid, sname, b_time, "借用中", ""])
+                        transaction_id_counter += 1
+                        # 為了防止 Google API 爆炸，每一行稍微停一下
+                        time.sleep(0.5) 
+
+                    # 3. 更新 Google Sheets 的庫存格子 (扣除總數)
                     cell = sheets["equip"].find(eid)
-                    if cell: sheets["equip"].update_cell(cell.row, 4, equipments[eid]["剩餘數量"])
+                    if cell:
+                        # 庫存在第 4 欄
+                        sheets["equip"].update_cell(cell.row, 4, equipments[eid]["剩餘數量"])
+                        
                 except Exception as e:
                     print(f"⚠️ 雲端寫入錯誤: {e}")
-                
-                transaction_id_counter += 1
-        sync_all_from_cloud()
+            else:
+                print(f"⚠️ 庫存不足或編號錯誤: {eid}")
+
+        sync_all_from_cloud() # 最後同步一次確保記憶體跟雲端一致
         return {"成功": True}
 
 @app.get("/transactions")
