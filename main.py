@@ -211,6 +211,46 @@ def 歸還設備(data: dict):
             sync_all_from_cloud()
             return {"成功": True}
         except Exception as e: return {"成功": False, "訊息": str(e)}
+        @app.post("/return_by_student")
+        def 依學號批量歸還(data: dict):
+            sid = data.get("學號")
+    admin_name = data.get("點收幹部")
+    
+    with db_lock:
+        # 🌟 關鍵修正：只抓出狀態是「借用中」的紀錄，排除「待審核」或「已歸還」
+        tids_to_return = [tid for tid, req in transactions.items() 
+                          if req["租借人員學號"] == sid and req["狀態"] == "借用中"]
+        
+        if not tids_to_return: 
+            return {"成功": False, "訊息": "該學號目前沒有『借用中』的設備（可能尚在審核中或已歸還）"}
+            
+        count = 0
+        for tid in tids_to_return:
+            record = transactions.get(tid)
+            if not record: continue
+            
+            equip_name = record["設備名稱"]
+            try:
+                # 1. 變更 Log 狀態為已歸還
+                cell_log = sheets["log"].find(str(tid), in_column=1)
+                if cell_log:
+                    sheets["log"].update_cell(cell_log.row, 6, "已歸還") 
+                    sheets["log"].update_cell(cell_log.row, 7, admin_name) 
+
+                # 2. 將庫存加回去
+                cell_equip = sheets["equip"].find(equip_name, in_column=2)
+                if cell_equip:
+                    curr_stock = int(sheets["equip"].cell(cell_equip.row, 4).value)
+                    sheets["equip"].update_cell(cell_equip.row, 4, curr_stock + 1)
+                
+                count += 1
+                # 🛑 煞車：避免 Google API 頻率限制
+                time.sleep(1.5)
+            except Exception as e:
+                print(f"批量歸還 TID {tid} 錯誤: {e}")
+
+        sync_all_from_cloud()
+        return {"成功": True, "歸還數量": count}
 
 if __name__ == "__main__":
     import uvicorn
