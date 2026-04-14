@@ -186,7 +186,7 @@ def 批量借用設備(data: dict):
         sync_all_from_cloud() # 最後同步一次確保記憶體跟雲端一致
         return {"成功": True}
 
-# 1. 修改原本的 borrow_batch，讓狀態預設為 "待審核"
+# --- 1. 修改借用邏輯：學生申請時就先扣庫存 ---
 @app.post("/borrow_batch")
 def 批量借用設備(data: dict):
     global transaction_id_counter
@@ -198,17 +198,74 @@ def 批量借用設備(data: dict):
         for item in items:
             eid = item["id"]
             borrow_qty = int(item["qty"])
-            # 注意：這裡不扣庫存，只寫入紀錄
-            for _ in range(borrow_qty):
-                t_id = transaction_id_counter
+            
+            # 檢查庫存是否真的夠扣
+            if eid in equipments and equipments[eid]["剩餘數量"] >= borrow_qty:
+                # 🌟 強預扣：立刻減少記憶體庫存
+                equipments[eid]["剩餘數量"] -= borrow_qty
                 b_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-                # 🌟 狀態設為 "待審核"
-                sheets["log"].append_row([t_id, item["name"], sid, sname, b_time, "待審核", ""])
-                transaction_id_counter += 1
-                time.sleep(0.5)
-        
+                
+                try:
+                    # 每一件設備產生獨立紀錄，狀態設為 "待審核"
+                    for _ in range(borrow_qty):
+                        t_id = transaction_id_counter
+                        sheets["log"].append_row([t_id, equipments[eid]["設備名稱"], sid, sname, b_time, "待審核", ""])
+                        transaction_id_counter += 1
+                        time.sleep(0.5) 
+
+                    # 同步更新試算表的庫存格子 (強預扣生效)
+                    cell = sheets["equip"].find(eid)
+                    if cell:
+                        sheets["equip"].update_cell(cell.row, 4, equipments[eid]["剩餘數量"])
+                except Exception as e:
+                    print(f"⚠️ 雲端寫入錯誤: {e}")
+            else:
+                return {"成功": False, "訊息": f"{item['name']} 庫存不足！"}
+
         sync_all_from_cloud()
-        return {"成功": True, "訊息": "申請已送出，請等待幹部審核。"}
+        return {"成功": True}
+
+# --- 2. 新增審核動作：處理核准與駁回 ---
+@app.post("/admin/approve")
+def 審核申請(data: dict):
+    tid = int(data.get("交易編號"))
+    action = data.get("動作") # "核准" 或 "駁回"
+    admin_name = data.get("點收幹部")
+    
+    with db_lock:
+        try:
+            # 找到該筆紀錄
+            cell_log = sheets["log"].find(str(tid), in_column=1)
+            if not cell_log: return {"成功": False, "訊息": "找不到紀錄"}
+            
+            # 取得該筆紀錄的狀態，防止重複審核
+            current_status = sheets["log"].cell(cell_log.row, 6).value
+            if current_status != "待審核":
+                return {"成功": False, "訊息": "此筆紀錄已處理過"}
+
+            equip_name = sheets["log"].cell(cell_log.row, 2).value
+
+            if action == "核准":
+                # 🌟 核准：狀態轉為借用中，庫存不必動（因為申請時扣過了）
+                sheets["log"].update_cell(cell_log.row, 6, "借用中")
+                sheets["log"].update_cell(cell_log.row, 7, admin_name)
+            
+            elif action == "駁回":
+                # 🌟 駁回：狀態設為已駁回，並把庫存「吐回去」
+                sheets["log"].update_cell(cell_log.row, 6, "已駁回")
+                sheets["log"].update_cell(cell_log.row, 7, admin_name)
+                
+                # 找設備加回庫存
+                cell_equip = sheets["equip"].find(equip_name, in_column=2)
+                if cell_equip:
+                    # 從試算表讀取當前數並 +1
+                    current_stock = int(sheets["equip"].cell(cell_equip.row, 4).value)
+                    sheets["equip"].update_cell(cell_equip.row, 4, current_stock + 1)
+
+            sync_all_from_cloud()
+            return {"成功": True}
+        except Exception as e:
+            return {"成功": False, "訊息": str(e)}
 
 # 2. 🌟 新增審核動作 API
 @app.post("/admin/approve")
