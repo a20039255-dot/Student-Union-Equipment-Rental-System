@@ -190,21 +190,24 @@
         }
         // 🔍 就是這一段在負責跟後端大腦要資料
         function loadEquipments() {
-            const equipmentList = document.getElementById('equipmentList');
-    
-         // 👇 這裡就是 fetch 的起點
-        fetch(`${API_URL}/equipments`)
+    // 🌟 1. 在 fetch 之前，先叫它印出完整網址
+    console.log("🔗 嘗試連線的網址：", `${API_URL}/equipments`);
+
+    fetch(`${API_URL}/equipments`)
         .then(response => {
+            // 🌟 2. 順便印出後端的狀態碼 (例如 200 或 404)
+            console.log("📡 後端回應狀態碼：", response.status);
+            
             if (!response.ok) throw new Error('連線失敗');
             return response.json();
         })
         .then(data => {
-            // 這裡會把抓到的資料畫在網頁上
             renderEquipments(data);
         })
         .catch(error => {
-            console.error('Error:', error);
-            alert("連線失敗"); // 👈 就是這個彈窗跳出來了
+            // 🌟 3. 在報錯時印出更詳細的原因
+            console.error('❌ 詳細錯誤訊息：', error.message);
+            alert("連線失敗");
         });
 }
 
