@@ -3,54 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>學生會設備借用系統</title>
+    <title>學生會設備借用</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen p-4">
     <div class="max-w-md mx-auto space-y-4">
-        
         <div class="bg-blue-500 text-white p-6 rounded-2xl shadow-lg flex justify-between items-center">
             <div>
                 <h1 class="text-2xl font-bold">📦 設備借用</h1>
                 <p id="student-info" class="mt-1 text-sm opacity-90">載入中...</p>
             </div>
-            <button onclick="logout()" class="bg-blue-700 hover:bg-blue-800 px-3 py-2 rounded text-sm transition font-bold shadow">切換帳號</button>
+            <button onclick="logout()" class="bg-blue-700 hover:bg-blue-800 px-3 py-2 rounded text-sm transition font-bold shadow">登出</button>
         </div>
 
         <div class="bg-white p-4 rounded-2xl shadow-md">
-            <h2 class="text-lg font-bold mb-3 flex items-center text-gray-800">
-                <span class="mr-2">🔍</span> 可借用設備
-            </h2>
+            <h2 class="text-lg font-bold mb-3 flex items-center text-gray-800"><span class="mr-2">🔍</span> 可借用設備</h2>
             <div id="equipment-list" class="space-y-3">
+                <p class="text-center text-gray-500 py-6 animate-pulse font-bold">📡 正在連線至雲端設備庫...</p>
             </div>
         </div>
 
         <div id="cart-section" class="bg-yellow-50 p-4 rounded-2xl shadow-md border-2 border-yellow-200 hidden sticky bottom-4">
-            <h2 class="text-lg font-bold mb-3 text-yellow-700 flex items-center">
-                <span class="mr-2">🛒</span> 待借用清單
-            </h2>
-            <ul id="cart-list" class="space-y-2 mb-4 text-sm text-gray-700">
-            </ul>
-            <button onclick="submitBatchBorrow()" 
-                    class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-xl transition shadow-md">
-                確認借出這些設備
-            </button>
+            <h2 class="text-lg font-bold mb-3 text-yellow-700 flex items-center"><span class="mr-2">🛒</span> 待借用清單</h2>
+            <ul id="cart-list" class="space-y-2 mb-4 text-sm text-gray-700"></ul>
+            <button onclick="submitBatchBorrow()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-xl transition shadow-md">確認借出</button>
         </div>
     </div>
 
     <script>
-        // ⚠️ 部長請注意：填入你的 Render 網址
+        // ⚠️ 替換成你的 Render 或 Cloud Run 網址
         const API_URL = "https://student-api-backend-6bfb.onrender.com"; 
-        
         const sid = localStorage.getItem("studentId");
         const sname = localStorage.getItem("studentName");
         let cart = []; 
 
-        if (!sid) {
-            window.location.href = "login.html";
-        } else {
-            document.getElementById("student-info").innerText = `同學你好：${sname} (${sid})`;
-        }
+        if (!sid) window.location.href = "login.html";
+        else document.getElementById("student-info").innerText = `同學你好：${sname} (${sid})`;
 
         function logout() {
             localStorage.clear();
@@ -66,35 +54,27 @@
                 
                 for (let id in data) {
                     const item = data[id];
-                    
                     list.innerHTML += `
-                        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-200 shadow-sm transition hover:shadow-md">
+                        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
                             <div>
                                 <p class="font-bold text-gray-800 text-lg">${item.設備名稱}</p>
                                 <p class="text-sm text-gray-600 mt-1">剩餘庫存: <span class="font-bold text-blue-600 text-lg">${item.剩餘數量}</span></p>
-                                <p class="text-xs text-yellow-600 mt-1 font-medium bg-yellow-100 inline-block px-2 py-0.5 rounded">每人限借: ${item.借用上限}</p>
+                                <p class="text-xs text-yellow-600 mt-1 bg-yellow-100 inline-block px-2 py-0.5 rounded">每人限借: ${item.借用上限}</p>
                             </div>
                             <button onclick="addToCart('${id}', '${item.設備名稱}', ${item.剩餘數量}, ${item.借用上限})" 
-                                    class="${item.剩餘數量 <= 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-100 hover:bg-blue-200 text-blue-700 transition'} px-5 py-3 rounded-xl font-bold text-sm shadow-sm"
-                                    ${item.剩餘數量 <= 0 ? 'disabled' : ''}>
-                                + 加入
-                            </button>
-                        </div>
-                    `;
+                                    class="${item.剩餘數量 <= 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'} px-5 py-3 rounded-xl font-bold text-sm"
+                                    ${item.剩餘數量 <= 0 ? 'disabled' : ''}>+ 加入</button>
+                        </div>`;
                 }
-            } catch (error) {
-                document.getElementById("equipment-list").innerHTML = "<p class='text-red-500 font-bold p-4 text-center'>連線中斷，請重新整理</p>";
+            } catch (e) {
+                document.getElementById("equipment-list").innerHTML = "<p class='text-red-500 font-bold text-center'>連線異常</p>";
             }
         }
 
         function addToCart(id, name, availableQty, maxLimit) {
             const currentCount = cart.filter(item => item.id === id).length;
-            if (currentCount >= maxLimit) {
-                return alert(`❌ 為了公平起見，【${name}】每人最多只能借 ${maxLimit} 個喔！`);
-            }
-            if (currentCount >= availableQty) {
-                return alert(`⚠️ 庫存不夠囉！【${name}】目前只剩 ${availableQty} 個。`);
-            }
+            if (currentCount >= maxLimit) return alert(`❌ 【${name}】每人限借 ${maxLimit} 個喔！`);
+            if (currentCount >= availableQty) return alert(`⚠️ 庫存不足。`);
             cart.push({ id, name });
             renderCart();
         }
@@ -102,52 +82,34 @@
         function renderCart() {
             const section = document.getElementById("cart-section");
             const list = document.getElementById("cart-list");
-            
             if (cart.length > 0) {
                 section.classList.remove("hidden");
-                list.innerHTML = cart.map((item, index) => `
-                    <li class="flex justify-between items-center bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                        <span class="font-bold text-gray-800">${item.name}</span>
-                        <button onclick="removeFromCart(${index})" class="text-red-500 hover:bg-red-50 px-3 py-1 rounded-md text-xs transition font-bold">移除</button>
-                    </li>
-                `).join('');
-            } else {
-                section.classList.add("hidden");
-            }
+                list.innerHTML = cart.map((item, i) => `
+                    <li class="flex justify-between items-center bg-white p-2 rounded-lg border shadow-sm">
+                        <span class="font-bold">${item.name}</span>
+                        <button onclick="removeFromCart(${i})" class="text-red-500 font-bold px-2">移除</button>
+                    </li>`).join('');
+            } else section.classList.add("hidden");
         }
 
-        function removeFromCart(index) {
-            cart.splice(index, 1);
-            renderCart();
-        }
+        function removeFromCart(i) { cart.splice(i, 1); renderCart(); }
 
         async function submitBatchBorrow() {
             if (cart.length === 0) return;
-            if (!confirm(`確定要借出清單上的 ${cart.length} 項設備嗎？`)) return;
+            if (!confirm(`確定借出 ${cart.length} 項設備？`)) return;
 
             try {
-                const response = await fetch(`${API_URL}/borrow_batch`, {
+                const res = await fetch(`${API_URL}/borrow_batch`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        "租借人員學號": sid,
-                        "設備清單": cart
-                    })
+                    body: JSON.stringify({ "租借人員學號": sid, "租借人員姓名": sname, "設備清單": cart })
                 });
-
-                if (response.ok) {
-                    alert("✅ 借用手續完成！請找幹部領取器材。");
-                    cart = [];
-                    renderCart();
-                    fetchEquipments(); 
-                } else {
-                    alert("❌ 借用失敗，請稍後再試。");
-                }
-            } catch (error) {
-                alert("⚠️ 網路連線異常。");
-            }
+                if (res.ok) {
+                    alert("✅ 借用完成！請找幹部領取。");
+                    cart = []; renderCart(); fetchEquipments(); 
+                } else alert("❌ 借用失敗。");
+            } catch (e) { alert("⚠️ 網路異常。"); }
         }
-
         fetchEquipments();
     </script>
 </body>
