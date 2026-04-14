@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>學生會設備借用系統 - V2.0 購物車版</title>
+    <title>學生會設備借用系統 - V2.2 購物車版</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen p-4">
@@ -51,26 +51,23 @@
             const data = await res.json();
             const list = document.getElementById("equipment-list");
             list.innerHTML = "";
-            
+            }
             for (let id in data) {
                 const item = data[id];
                 list.innerHTML += `
-                    <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
-                        <div>
-                            <p class="font-bold">${item.設備名稱}</p>
-                            <p class="text-xs text-gray-500 text-yellow-600">剩餘: ${item.剩餘數量} / ${item.總數量}</p>
-                        </div>
-                        // 請找到 <button onclick="addToCart... 這行，把它替換成下面這樣：
-// 注意參數多傳了一個 ${item.借用上限}
-<button onclick="addToCart('${id}', '${item.設備名稱}', ${item.剩餘數量}, ${item.借用上限})" 
-        ${item.剩餘數量 <= 0 ? 'disabled class="bg-gray-300' : 'class="bg-blue-100 text-blue-600'} 
-        px-4 py-2 rounded-lg font-bold text-sm">
-    + 加入
-</button>
-                    </div>
-                `;
-            }
-        }
+                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
+        <div>
+            <p class="font-bold">${item.設備名稱}</p>
+            <p class="text-xs text-gray-500 mt-1">剩餘庫存: <span class="font-bold text-blue-600">${item.剩餘數量}</span></p>
+            <p class="text-xs text-yellow-600 mt-1">每人限借: ${item.借用上限} 個</p>
+        </div>
+        <button onclick="addToCart('${id}', '${item.設備名稱}', ${item.剩餘數量}, ${item.借用上限})" 
+                ${item.剩餘數量 <= 0 ? 'disabled class="bg-gray-300' : 'class="bg-blue-100 hover:bg-blue-200 text-blue-700 transition'} 
+                px-4 py-2 rounded-lg font-bold text-sm shadow-sm">
+            + 加入
+        </button>
+    </div>
+`;}
 
         // 加入購物車
         // 升級版 V2.2：加入購物車 (支援各自獨立上限)
@@ -83,7 +80,6 @@ function addToCart(id, name, availableQty, maxLimit) {
         return alert(`❌ 為了公平起見，【${name}】每人最多只能借 ${maxLimit} 個喔！`);
     }
 
-    // 檢查是否超過實際剩餘庫存
     if (currentCount >= availableQty) {
         return alert(`⚠️ 庫存不夠囉！【${name}】目前只剩 ${availableQty} 個。`);
     }
