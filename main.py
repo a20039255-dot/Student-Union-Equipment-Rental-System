@@ -58,18 +58,23 @@ def sync_all_from_cloud():
         # A. 同步幹部
         admins_db = {str(r["幹部代號"]): str(r["幹部名稱"]) for r in sheets["admin"].get_all_records()}
         
-        # B. 同步設備 (包含單次借用上限)
         equip_recs = sheets["equip"].get_all_records()
         equipments.clear()
         for r in equip_recs:
-            max_limit = r.get("借用期限(天)") or r.get("單次借用上限") # 相容不同標題命名
-            max_limit = int(max_limit) if max_limit != "" and max_limit is not None else 3
+            # 抓取數量上限 (Column E，傳給前端購物車防呆用)
+            qty_limit = r.get("單次借用上限")
+            qty_limit = int(qty_limit) if qty_limit != "" and qty_limit is not None else 1
+            
+            # 抓取天數期限 (Column F，留在後端算催收用)
+            days_limit = r.get("借用期限(天)")
+            days_limit = int(days_limit) if days_limit != "" and days_limit is not None else 3
             
             equipments[str(r["設備編號"])] = {
                 "設備名稱": str(r["設備名稱"]),
                 "總數量": int(r["總數量"]),
                 "剩餘數量": int(r["剩餘數量"]),
-                "借用上限": max_limit # 這裡把上限和期限當作同一個數字(也可拆分)
+                "借用上限": qty_limit,       # 傳給前端，藍牙喇叭會變回 5
+                "借用期限天數": days_limit   # 留在後端計算 14 天過期
             }
             
         # C. 同步借用紀錄 (計算過期天數)
@@ -85,19 +90,19 @@ def sync_all_from_cloud():
             if r["狀態"] == "借用中":
                 equip_name = str(r["設備名稱"])
                 
-                # 計算借用天數
+                # 計算已借用天數
                 days_diff = 0
                 try:
                     borrow_time = datetime.strptime(str(r["借用時間"]), "%Y-%m-%d %H:%M")
                     days_diff = (now - borrow_time).days
                 except:
-                    pass # 若時間格式錯誤則預設為0天
+                    pass 
                 
-                # 取得該設備的期限限制 (預設3天)
+                # 取得該設備的【天數期限】來判定是否過期
                 limit = 3
                 for e_id, e_info in equipments.items():
                     if e_info["設備名稱"] == equip_name:
-                        limit = e_info.get("借用上限", 3)
+                        limit = e_info.get("借用期限天數", 3) # 這裡改抓獨立的天數變數
                         break
 
                 new_transactions[t_id] = {
