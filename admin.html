@@ -32,7 +32,20 @@
                 <strong id="admin-welcome"></strong>
                 <button class="btn btn-sm btn-outline-dark" onclick="adminLogout()">登出</button>
             </div>
-
+            <div class="bg-green-50 p-4 rounded-xl shadow-sm border border-green-200 mb-6">
+    <h2 class="font-bold text-green-800 text-lg mb-2 flex items-center">
+        <span class="mr-2">🔄</span> 快速一鍵歸還
+    </h2>
+    <p class="text-sm text-green-600 mb-3">輸入同學學號，可一次歸還該同學名下所有設備。</p>
+    <div class="flex gap-2">
+        <input type="text" id="return-sid" placeholder="例如: 409431XX" 
+        class="border border-gray-300 p-2 rounded-lg flex-1 focus:outline-none focus:border-green-500">
+        <button onclick="returnAllByStudent()" 
+                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold shadow transition">
+            全部歸還
+        </button>
+    </div>
+</div>
             <div class="card admin-card p-3 shadow-sm mb-4">
                 <h5 class="mb-3">📋 待歸還清單 (點收區)</h5>
                 <div class="table-responsive">
@@ -142,6 +155,37 @@
             });
             if(res.ok) { alert("已同步至 Google Sheets！"); fetchAdmins(); }
         }
+        // 一鍵歸還功能
+async function returnAllByStudent() {
+    const sidInput = document.getElementById("return-sid");
+    const sid = sidInput.value.trim();
+    
+    if(!sid) return alert("請先輸入同學的學號！");
+    if(!confirm(`⚠️ 確定要將學號 【${sid}】 借用的「所有設備」一次點收歸還嗎？`)) return;
+
+    try {
+        const res = await fetch(`${API_URL}/return_by_student`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ "學號": sid })
+        });
+
+        const result = await res.json();
+        
+        if(result.成功) {
+            alert(`✅ 太棒了！成功歸還了 ${result.歸還數量} 項設備！`);
+            sidInput.value = ""; // 清空輸入框
+            
+            // 如果你有寫重新抓取清單的函數 (例如 fetchTransactions)，請在這裡呼叫它來更新畫面
+            // fetchTransactions(); 
+            
+        } else {
+            alert(`❌ 歸還失敗：${result.訊息}`);
+        }
+    } catch (error) {
+        alert("網路連線異常，請確認後端伺服器狀態。");
+    }
+}
     </script>
 </body>
 </html>

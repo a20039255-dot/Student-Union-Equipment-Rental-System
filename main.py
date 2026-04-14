@@ -156,6 +156,37 @@ def 歸還點收(data: dict):
         except Exception as e:
             print(f"⚠️ 歸還同步錯誤: {e}")
         return {"成功": True}
+    
+    @app.post("/return_by_student")
+    def 依學號批量歸還(data: dict):
+        sid = data.get("學號")
+    
+    with db_lock:
+        # 1. 找出該學號所有「借用中」的交易編號 (List Comprehension)
+        tids_to_return = [tid for tid, req in transactions.items() if req["租借人員學號"] == sid]
+        
+        # 如果沒找到東西，直接回報錯誤
+        if not tids_to_return:
+            return {"成功": False, "訊息": "找不到該學號的借用紀錄"}
+            
+        # 2. 跑迴圈，把找到的設備一件一件還回去
+        for tid in tids_to_return:
+            record = transactions.pop(tid) # 從待歸還清單移除
+            try:
+                # 幫設備加回庫存
+                cell_equip = sheets["equip"].find(record["設備名稱"])
+                if cell_equip:
+                    current_qty = int(sheets["equip"].cell(cell_equip.row, 4).value)
+                    sheets["equip"].update_cell(cell_equip.row, 4, current_qty + 1)
+                
+                # 把 Log 表格的狀態改成「已歸還」
+                cell_log = sheets["log"].find(str(tid))
+                if cell_log:
+                    sheets["log"].update_cell(cell_log.row, 5, "已歸還")
+            except Exception as e:
+                print(f"⚠️ 歸還同步錯誤: {e}")
+                
+    return {"成功": True, "歸還數量": len(tids_to_return)}
 
 # 幹部登入與管理
 @app.get("/admins")
