@@ -108,6 +108,7 @@
         }
 
         // 3. 聚合顯示 (核心邏輯：將 Array 轉成物件統計)
+// 1. 聚合顯示 (加入「移除數量」選單)
         function renderCart() {
             const section = document.getElementById("cart-section");
             const list = document.getElementById("cart-list");
@@ -115,27 +116,56 @@
             
             if (cart.length > 0) {
                 section.classList.remove("hidden");
-                // 💡 使用 reduce 進行分組統計
+                // 統計各品項數量
                 const grouped = cart.reduce((acc, curr) => {
                     acc[curr.id] = acc[curr.id] || { name: curr.name, count: 0 };
                     acc[curr.id].count++;
                     return acc;
                 }, {});
 
-                list.innerHTML = Object.keys(grouped).map(id => `
-                    <li class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
-                        <div class="flex items-center gap-2">
-                            <span class="font-bold text-gray-800">${grouped[id].name}</span>
-                            <span class="text-blue-600 font-black text-base">x ${grouped[id].count}</span>
+                list.innerHTML = Object.keys(grouped).map(id => {
+                    const item = grouped[id];
+                    // 💡 動態生成「移除數量」的選單 (1 ~ 目前已選數量)
+                    let removeOptions = "";
+                    for(let i=1; i<=item.count; i++) {
+                        removeOptions += `<option value="${i}">${i}</option>`;
+                    }
+
+                    return `
+                    <li class="flex flex-col gap-2 bg-gray-50 p-3 rounded-xl border border-gray-100 mb-2">
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-gray-800">${item.name}</span>
+                                <span class="text-blue-600 font-black">x ${item.count}</span>
+                            </div>
                         </div>
-                        <button onclick="removeFromCart('${id}')" class="text-red-500 hover:bg-red-50 px-3 py-1 rounded-lg text-xs font-bold transition">移除項目</button>
-                    </li>`).join('');
-            } else section.classList.add("hidden");
+                        <div class="flex items-center justify-end gap-2">
+                            <span class="text-xs text-gray-400">移除數量:</span>
+                            <select id="remove-qty-${id}" class="text-xs border border-gray-200 rounded-md px-1 py-1 bg-white">
+                                ${removeOptions}
+                            </select>
+                            <button onclick="removeFromCart('${id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg text-xs font-bold transition">執行移除</button>
+                        </div>
+                    </li>`;
+                }).join('');
+            } else {
+                section.classList.add("hidden");
+            }
         }
 
+        // 2. 精準移除邏輯 (核心升級)
         function removeFromCart(id) {
-            cart = cart.filter(i => i.id !== id); // 移除該種類全部
-            renderCart();
+            const removeQty = parseInt(document.getElementById(`remove-qty-${id}`).value);
+            
+            // 💡 使用迴圈配合 findIndex，一個一個把對應 ID 的物件從陣列中切除
+            for(let i=0; i < removeQty; i++) {
+                const targetIndex = cart.findIndex(item => item.id === id);
+                if (targetIndex !== -1) {
+                    cart.splice(targetIndex, 1); // 刪除找到的那個索引位置
+                }
+            }
+            
+            renderCart(); // 重新渲染畫面
         }
 
         async function submitBatchBorrow() {
