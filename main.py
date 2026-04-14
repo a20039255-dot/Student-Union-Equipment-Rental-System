@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-app = FastAPI(title="學生會設備管理系統-購物車 V2.0")
+app = FastAPI(title="學生會設備管理系統 - V3.0 旗艦版")
 
 # 1. 跨網域設定
 app.add_middleware(
@@ -18,7 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 2. Google Sheets 初始化 ---
+# 2. Google Sheets 初始化
 SCOPE = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/drive']
 
 def init_google_sheets():
@@ -44,7 +44,7 @@ def init_google_sheets():
 
 sheets = init_google_sheets()
 
-# --- 3. 記憶體變數 ---
+# 3. 記憶體變數
 admins_db = {}
 equipments = {}
 transactions = {}
@@ -57,32 +57,62 @@ def sync_all_from_cloud():
     try:
         # A. 同步幹部
         admins_db = {str(r["幹部代號"]): str(r["幹部名稱"]) for r in sheets["admin"].get_all_records()}
-        # B. 同步設備
+        
+        # B. 同步設備 (包含單次借用上限)
         equip_recs = sheets["equip"].get_all_records()
-        equipments = {
-            str(r["設備編號"]): {
+        equipments.clear()
+        for r in equip_recs:
+            max_limit = r.get("借用期限(天)") or r.get("單次借用上限") # 相容不同標題命名
+            max_limit = int(max_limit) if max_limit != "" and max_limit is not None else 3
+            
+            equipments[str(r["設備編號"])] = {
                 "設備名稱": str(r["設備名稱"]),
                 "總數量": int(r["總數量"]),
                 "剩餘數量": int(r["剩餘數量"]),
-                # 👇 新增這一行，如果表格沒填數字，預設給 1
-                "借用上限": int(r.get("單次借用上限", 1)) 
-            } for r in equip_recs
-        }
-        # C. 同步借用紀錄 (僅加載借用中的案子)
+                "借用上限": max_limit # 這裡把上限和期限當作同一個數字(也可拆分)
+            }
+            
+        # C. 同步借用紀錄 (計算過期天數)
         log_recs = sheets["log"].get_all_records()
         new_transactions = {}
         max_id = 0
+        now = datetime.now()
+        
         for r in log_recs:
             t_id = int(r["交易編號"])
             if t_id > max_id: max_id = t_id
+            
             if r["狀態"] == "借用中":
+                equip_name = str(r["設備名稱"])
+                
+                # 計算借用天數
+                days_diff = 0
+                try:
+                    borrow_time = datetime.strptime(str(r["借用時間"]), "%Y-%m-%d %H:%M")
+                    days_diff = (now - borrow_time).days
+                except:
+                    pass # 若時間格式錯誤則預設為0天
+                
+                # 取得該設備的期限限制 (預設3天)
+                limit = 3
+                for e_id, e_info in equipments.items():
+                    if e_info["設備名稱"] == equip_name:
+                        limit = e_info.get("借用上限", 3)
+                        break
+
                 new_transactions[t_id] = {
-                    "交易編號": t_id, "設備名稱": str(r["設備名稱"]),
-                    "租借人員學號": str(r["借用人學號"]), "借用時間": str(r["借用時間"]), "狀態": "借用中"
+                    "交易編號": t_id, 
+                    "設備名稱": equip_name,
+                    "租借人員學號": str(r["借用人學號"]), 
+                    "借用時間": str(r["借用時間"]),
+                    "已借用天數": days_diff,
+                    "是否過期": days_diff >= limit,
+                    "狀態": "借用中"
                 }
+                
         transactions = new_transactions
         transaction_id_counter = max_id + 1
-        print(f"✅ [同步完成] 設備:{len(equipments)}種, 下一筆ID:{transaction_id_counter}")
+        print(f"✅ [同步完成] 設備:{len(equipments)}種, 待歸還:{len(transactions)}筆")
     except Exception as e:
         print(f"⚠️ [同步失敗]: {e}")
 
@@ -95,111 +125,80 @@ def 取得設備清單():
     sync_all_from_cloud()
     return equipments
 
-# 🛒 重點：新增批量借用 API (對應前端的購物車)
 @app.post("/borrow_batch")
 def 批量借用設備(data: dict):
     global transaction_id_counter
     sid = data.get("租借人員學號")
-    items = data.get("設備清單") # 前端送來的陣列
+    items = data.get("設備清單")
     
     with db_lock:
         for item in items:
             eid = item["id"]
             if eid in equipments and equipments[eid]["剩餘數量"] > 0:
-                # 1. 更新本機數值
                 equipments[eid]["剩餘數量"] -= 1
                 t_id = transaction_id_counter
                 b_time = datetime.now().strftime("%Y-%m-%d %H:%M")
                 
-                # 2. 本機待歸還紀錄
-                transactions[t_id] = {
-                    "交易編號": t_id, "設備名稱": equipments[eid]["設備名稱"],
-                    "租借人員學號": sid, "借用時間": b_time, "狀態": "借用中"
-                }
-                
-                # 3. 雲端同步 (重點：逐筆寫入 Log 並更新該項目的庫存)
                 try:
                     sheets["log"].append_row([t_id, equipments[eid]["設備名稱"], sid, b_time, "借用中"])
                     cell = sheets["equip"].find(eid)
                     if cell:
                         sheets["equip"].update_cell(cell.row, 4, equipments[eid]["剩餘數量"])
                 except Exception as e:
-                    print(f"⚠️ 雲端寫入延遲: {e}")
+                    print(f"⚠️ 雲端寫入錯誤: {e}")
                 
                 transaction_id_counter += 1
-        
+        sync_all_from_cloud() # 強制刷新記憶體
         return {"成功": True}
 
 @app.get("/transactions")
 def 取得待歸還清單():
+    sync_all_from_cloud() # 每次查看都更新天數
     return transactions
 
 @app.post("/return")
-def 歸還點收(data: dict):
+def 單筆歸還(data: dict):
     tid = int(data.get("交易編號"))
     with db_lock:
         if tid not in transactions:
-            raise HTTPException(status_code=400, detail="找不到紀錄")
+            return {"成功": False, "訊息": "找不到紀錄"}
         
         record = transactions.pop(tid)
         try:
-            # 找到對應設備增加庫存
             cell_equip = sheets["equip"].find(record["設備名稱"])
             if cell_equip:
                 current_qty = int(sheets["equip"].cell(cell_equip.row, 4).value)
                 sheets["equip"].update_cell(cell_equip.row, 4, current_qty + 1)
             
-            # 更新 Log 狀態
             cell_log = sheets["log"].find(str(tid))
             if cell_log:
                 sheets["log"].update_cell(cell_log.row, 5, "已歸還")
         except Exception as e:
             print(f"⚠️ 歸還同步錯誤: {e}")
         return {"成功": True}
-    
-    @app.post("/return_by_student")
-    def 依學號批量歸還(data: dict):
-        sid = data.get("學號")
-    
+
+@app.post("/return_by_student")
+def 依學號批量歸還(data: dict):
+    sid = data.get("學號")
     with db_lock:
-        # 1. 找出該學號所有「借用中」的交易編號 (List Comprehension)
         tids_to_return = [tid for tid, req in transactions.items() if req["租借人員學號"] == sid]
-        
-        # 如果沒找到東西，直接回報錯誤
         if not tids_to_return:
             return {"成功": False, "訊息": "找不到該學號的借用紀錄"}
             
-        # 2. 跑迴圈，把找到的設備一件一件還回去
         for tid in tids_to_return:
-            record = transactions.pop(tid) # 從待歸還清單移除
+            record = transactions.pop(tid)
             try:
-                # 幫設備加回庫存
                 cell_equip = sheets["equip"].find(record["設備名稱"])
                 if cell_equip:
                     current_qty = int(sheets["equip"].cell(cell_equip.row, 4).value)
                     sheets["equip"].update_cell(cell_equip.row, 4, current_qty + 1)
                 
-                # 把 Log 表格的狀態改成「已歸還」
                 cell_log = sheets["log"].find(str(tid))
                 if cell_log:
                     sheets["log"].update_cell(cell_log.row, 5, "已歸還")
             except Exception as e:
-                print(f"⚠️ 歸還同步錯誤: {e}")
-                
+                pass
     return {"成功": True, "歸還數量": len(tids_to_return)}
-
-# 幹部登入與管理
-@app.get("/admins")
-def 取得幹部名單():
-    sync_all_from_cloud()
-    return admins_db
-
-@app.post("/admin/login")
-def 幹部登入(data: dict):
-    code = data.get("幹部代號")
-    if code in admins_db or code == "Admin-999":
-        return {"成功": True, "名稱": admins_db.get(code, "管理員")}
-    raise HTTPException(status_code=401)
 
 if __name__ == "__main__":
     import uvicorn

@@ -3,189 +3,133 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>幹部管理後台</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .admin-card { border-top: 5px solid #ffc107; }
-        @media (max-width: 600px) { .container { padding: 10px; } table { font-size: 0.8rem; } }
-    </style>
+    <title>設備部幹部後台 - V3.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-light">
-    <nav class="navbar navbar-dark bg-dark mb-4">
-        <div class="container">
-            <span class="navbar-brand">🔐 設備部管理後台</span>
-            <button class="btn btn-outline-warning btn-sm" onclick="location.href='index.html'">返回首頁</button>
-        </div>
-    </nav>
-
-    <div class="container">
-        <div id="login-section" class="card p-4 shadow-sm mb-4">
-            <h5>幹部登入</h5>
-            <div class="input-group mt-3">
-                <input type="password" id="admin-id" class="form-control" placeholder="請輸入幹部代號">
-                <button class="btn btn-warning" onclick="adminLogin()">登入</button>
+<body class="bg-gray-100 min-h-screen p-4">
+    <div class="max-w-md mx-auto space-y-4">
+        
+        <div class="bg-slate-800 text-white p-6 rounded-2xl shadow-lg flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold">🛡️ 幹部管理中心</h1>
+                <p class="mt-1 text-sm text-slate-300">請仔細核對設備狀況</p>
             </div>
+            <button onclick="location.href='student.html'" class="bg-slate-600 hover:bg-slate-500 px-3 py-2 rounded text-sm transition font-bold shadow">返回首頁</button>
         </div>
 
-        <div id="admin-main" class="d-none">
-            <div class="alert alert-warning d-flex justify-content-between align-items-center">
-                <strong id="admin-welcome"></strong>
-                <button class="btn btn-sm btn-outline-dark" onclick="adminLogout()">登出</button>
+        <div class="bg-green-50 p-4 rounded-xl shadow-sm border border-green-200">
+            <h2 class="font-bold text-green-800 text-lg mb-2 flex items-center">
+                <span class="mr-2">🔄</span> 快速一鍵歸還
+            </h2>
+            <p class="text-sm text-green-600 mb-3">輸入同學學號，一次歸還名下所有設備。</p>
+            <div class="flex gap-2">
+                <input type="text" id="return-sid" placeholder="例如: 409431XX" 
+                       class="border border-green-300 p-2 rounded-lg flex-1 focus:outline-none focus:ring-2 focus:ring-green-500">
+                <button onclick="returnAllByStudent()" 
+                        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold shadow transition">
+                    全部歸還
+                </button>
             </div>
-            <div class="bg-green-50 p-4 rounded-xl shadow-sm border border-green-200 mb-6">
-    <h2 class="font-bold text-green-800 text-lg mb-2 flex items-center">
-        <span class="mr-2">🔄</span> 快速一鍵歸還
-    </h2>
-    <p class="text-sm text-green-600 mb-3">輸入同學學號，可一次歸還該同學名下所有設備。</p>
-    <div class="flex gap-2">
-        <input type="text" id="return-sid" placeholder="例如: 409431XX" 
-        class="border border-gray-300 p-2 rounded-lg flex-1 focus:outline-none focus:border-green-500">
-        <button onclick="returnAllByStudent()" 
-                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold shadow transition">
-            全部歸還
-        </button>
-    </div>
-</div>
-            <div class="card admin-card p-3 shadow-sm mb-4">
-                <h5 class="mb-3">📋 待歸還清單 (點收區)</h5>
-                <div class="table-responsive">
-                    <table class="table table-bordered align-middle text-center">
-                        <thead class="table-dark">
-                            <tr><th>編號</th><th>設備</th><th>借用人</th><th>操作</th></tr>
-                        </thead>
-                        <tbody id="return-list"></tbody>
-                    </table>
-                </div>
-            </div>
+        </div>
 
-            <div class="card p-3 shadow-sm">
-                <h5>👥 幹部名冊 (同步自 Google Sheets)</h5>
-                <div class="row mt-3">
-                    <div class="col-md-4 mb-3">
-                        <input type="text" id="new-id" class="form-control mb-2" placeholder="新代號">
-                        <input type="text" id="new-name" class="form-control mb-2" placeholder="新姓名">
-                        <button class="btn btn-success w-100" onclick="addAdmin()">新增幹部</button>
-                    </div>
-                    <div class="col-md-8">
-                        <ul id="admin-list" class="list-group"></ul>
-                    </div>
-                </div>
+        <div class="bg-white p-4 rounded-2xl shadow-md">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-gray-800 flex items-center">
+                    <span class="mr-2">📋</span> 待歸還清單
+                </h2>
+                <button onclick="fetchTransactions()" class="text-sm text-blue-500 hover:text-blue-700 font-bold">↻ 重新整理</button>
             </div>
+            <div id="transaction-list" class="space-y-3">
+                </div>
         </div>
     </div>
 
     <script>
-        const API_URL = "https://student-api-backend-6bfb.onrender.com";
-        let currentAdmin = localStorage.getItem("admin_code");
+        // ⚠️ 部長請注意：填入你的 Render 網址
+        const API_URL = "https://student-api-backend-6bfb.onrender.com"; 
 
-        window.onload = () => { if(currentAdmin) showAdmin(); };
-
-        async function adminLogin() {
-            const code = document.getElementById("admin-id").value;
-            const res = await fetch(`${API_URL}/admin/login`, {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({"幹部代號": code})
-            });
-            if(res.ok) {
+        async function fetchTransactions() {
+            try {
+                const res = await fetch(`${API_URL}/transactions`);
                 const data = await res.json();
-                currentAdmin = code;
-                localStorage.setItem("admin_code", code);
-                showAdmin();
-            } else { alert("代號錯誤！"); }
-        }
+                const list = document.getElementById("transaction-list");
+                list.innerHTML = "";
+                
+                if(Object.keys(data).length === 0) {
+                    list.innerHTML = "<p class='text-center text-gray-400 py-4'>目前沒有借出任何設備 🎉</p>";
+                    return;
+                }
 
-        function showAdmin() {
-            document.getElementById("login-section").classList.add("d-none");
-            document.getElementById("admin-main").classList.remove("d-none");
-            document.getElementById("admin-welcome").innerText = `負責幹部：${currentAdmin}`;
-            fetchAdmins();
-            fetchReturns();
-        }
+                for (let tid in data) {
+                    const t = data[tid];
+                    // V3.0 過期警告邏輯
+                    const overdueClass = t.是否過期 ? "border-red-500 bg-red-50" : "border-gray-200 bg-white";
+                    const warningText = t.是否過期 ? `<p class="text-red-600 font-bold text-xs mt-1 animate-pulse">⚠️ 已逾期！請聯絡催收</p>` : "";
 
-        function adminLogout() { localStorage.removeItem("admin_code"); location.reload(); }
-
-        async function fetchAdmins() {
-            const res = await fetch(`${API_URL}/admins`);
-            const data = await res.json();
-            const list = document.getElementById("admin-list");
-            list.innerHTML = "";
-            for (const [id, name] of Object.entries(data)) {
-                list.innerHTML += `<li class="list-group-item d-flex justify-content-between">
-                    <b>${name}</b> <small class="text-muted">${id}</small>
-                </li>`;
+                    list.innerHTML += `
+                        <div class="p-4 rounded-xl border-2 ${overdueClass} shadow-sm transition-all">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <h3 class="font-bold text-gray-800 text-lg">${t.設備名稱}</h3>
+                                    <p class="text-sm text-gray-600 mt-1">借用人：<span class="font-bold">${t.租借人員學號}</span></p>
+                                    <p class="text-xs text-gray-500 mt-1">已借用：<span class="font-bold text-blue-600">${t.已借用天數} 天</span></p>
+                                    ${warningText}
+                                </div>
+                                <button onclick="returnItem(${t.交易編號})" 
+                                        class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-xl text-sm font-bold shadow-md transition">
+                                    點收歸還
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById("transaction-list").innerHTML = "<p class='text-red-500 text-center'>無法連線至伺服器</p>";
             }
         }
 
-        async function fetchReturns() {
-            const res = await fetch(`${API_URL}/transactions`);
-            const data = await res.json();
-            const list = document.getElementById("return-list");
-            list.innerHTML = "";
-            const records = Object.values(data);
-            if(records.length === 0) { list.innerHTML = "<tr><td colspan='4'>目前無待歸還設備</td></tr>"; return; }
-            records.forEach(t => {
-                list.innerHTML += `
-                    <tr>
-                        <td>#${t.交易編號}</td>
-                        <td>${t.設備名稱}</td>
-                        <td>${t.租借人員學號}</td>
-                        <td><button class="btn btn-sm btn-warning" onclick="confirmReturn(${t.交易編號})">確認歸還</button></td>
-                    </tr>`;
-            });
+        async function returnItem(tid) {
+            if (!confirm(`確定要歸還這項設備嗎？`)) return;
+            try {
+                const res = await fetch(`${API_URL}/return`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ "交易編號": tid })
+                });
+                if (res.ok) fetchTransactions();
+            } catch (e) {
+                alert("歸還失敗");
+            }
         }
 
-        async function confirmReturn(tid) {
-            if(!confirm("確定已收回設備？")) return;
-            const res = await fetch(`${API_URL}/return`, {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({"交易編號": tid})
-            });
-            if(res.ok) { alert("點收成功！"); fetchReturns(); }
-        }
-
-        async function addAdmin() {
-            const id = document.getElementById("new-id").value;
-            const name = document.getElementById("new-name").value;
-            const res = await fetch(`${API_URL}/admin/add`, {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({"新幹部代號": id, "新幹部名稱": name})
-            });
-            if(res.ok) { alert("已同步至 Google Sheets！"); fetchAdmins(); }
-        }
-        // 一鍵歸還功能
-async function returnAllByStudent() {
-    const sidInput = document.getElementById("return-sid");
-    const sid = sidInput.value.trim();
-    
-    if(!sid) return alert("請先輸入同學的學號！");
-    if(!confirm(`⚠️ 確定要將學號 【${sid}】 借用的「所有設備」一次點收歸還嗎？`)) return;
-
-    try {
-        const res = await fetch(`${API_URL}/return_by_student`, {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ "學號": sid })
-        });
-
-        const result = await res.json();
-        
-        if(result.成功) {
-            alert(`✅ 太棒了！成功歸還了 ${result.歸還數量} 項設備！`);
-            sidInput.value = ""; // 清空輸入框
+        async function returnAllByStudent() {
+            const sidInput = document.getElementById("return-sid");
+            const sid = sidInput.value.trim();
             
-            // 如果你有寫重新抓取清單的函數 (例如 fetchTransactions)，請在這裡呼叫它來更新畫面
-            // fetchTransactions(); 
-            
-        } else {
-            alert(`❌ 歸還失敗：${result.訊息}`);
+            if(!sid) return alert("請先輸入同學的學號！");
+            if(!confirm(`⚠️ 確定要將學號 【${sid}】 借用的「所有設備」一次點收歸還嗎？`)) return;
+
+            try {
+                const res = await fetch(`${API_URL}/return_by_student`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ "學號": sid })
+                });
+                const result = await res.json();
+                
+                if(result.成功) {
+                    alert(`✅ 太棒了！成功歸還了 ${result.歸還數量} 項設備！`);
+                    sidInput.value = ""; 
+                    fetchTransactions(); 
+                } else {
+                    alert(`❌ 歸還失敗：${result.訊息}`);
+                }
+            } catch (error) {
+                alert("網路連線異常，請確認後端伺服器狀態。");
+            }
         }
-    } catch (error) {
-        alert("網路連線異常，請確認後端伺服器狀態。");
-    }
-}
+
+        fetchTransactions();
     </script>
 </body>
 </html>
