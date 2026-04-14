@@ -177,60 +177,75 @@ def 取得待歸還清單():
 @app.post("/return")
 def 單筆歸還(data: dict):
     tid = int(data.get("交易編號"))
-    admin_name = data.get("點收幹部") # 接收幹部本名
+    admin_name = data.get("點收幹部")
     with db_lock:
         if tid not in transactions: return {"成功": False, "訊息": "找不到紀錄"}
         record = transactions.pop(tid)
+        equip_name = record["設備名稱"]
         try:
-            cell_equip = sheets["equip"].find(record["設備名稱"])
+            # 1. 🌟 精準定位：限制在第 2 欄找設備名稱
+            cell_equip = sheets["equip"].find(equip_name, in_column=2)
             if cell_equip:
-                # 💡 新增：同時抓取「總數量(第3欄)」與「剩餘數量(第4欄)」
-                total_qty = int(sheets["equip"].cell(cell_equip.row, 3).value)
-                current_qty = int(sheets["equip"].cell(cell_equip.row, 4).value)
-                
-                # 💡 核心防呆：歸還後的數量，絕對不能超過總數量 (取兩者較小值)
+                # 🌟 API 減負：不要問雲端了，直接從記憶體查數量 (省下 2 次 API)
+                total_qty = 1
+                current_qty = 0
+                for k, v in equipments.items():
+                    if v["設備名稱"] == equip_name:
+                        total_qty = v["總數量"]
+                        current_qty = v["剩餘數量"]
+                        v["剩餘數量"] = min(current_qty + 1, total_qty) # 同步更新記憶體
+                        break
                 new_qty = min(current_qty + 1, total_qty)
-                
                 sheets["equip"].update_cell(cell_equip.row, 4, new_qty)
             
-            cell_log = sheets["log"].find(str(tid))
+            # 2. 🌟 精準定位：限制在第 1 欄找交易編號 (防止找錯格子)
+            cell_log = sheets["log"].find(str(tid), in_column=1)
             if cell_log:
                 sheets["log"].update_cell(cell_log.row, 6, "已歸還") 
                 sheets["log"].update_cell(cell_log.row, 7, admin_name) 
         except Exception as e:
             print(f"⚠️ 歸還同步錯誤: {e}")
+        return {"成功": True}
 
 @app.post("/return_by_student")
 def 依學號批量歸還(data: dict):
     sid = data.get("學號")
-    admin_name = data.get("點收幹部") # 接收幹部本名
+    admin_name = data.get("點收幹部")
     with db_lock:
         tids_to_return = [tid for tid, req in transactions.items() if req["租借人員學號"] == sid]
-        if not tids_to_return: return {"成功": False, "訊息": "找不到該學號的借用紀錄"}
+        if not tids_to_return: return {"成功": False, "訊息": "找不到借用紀錄"}
             
         for tid in tids_to_return:
             record = transactions.pop(tid)
+            equip_name = record["設備名稱"]
             try:
-                cell_equip = sheets["equip"].find(record["設備名稱"])
+                # 1. 🌟 精準定位與 API 減負
+                cell_equip = sheets["equip"].find(equip_name, in_column=2)
                 if cell_equip:
-                    # 💡 同樣的防呆機制
-                    total_qty = int(sheets["equip"].cell(cell_equip.row, 3).value)
-                    current_qty = int(sheets["equip"].cell(cell_equip.row, 4).value)
-                    
+                    total_qty = 1
+                    current_qty = 0
+                    for k, v in equipments.items():
+                        if v["設備名稱"] == equip_name:
+                            total_qty = v["總數量"]
+                            current_qty = v["剩餘數量"]
+                            v["剩餘數量"] = min(current_qty + 1, total_qty)
+                            break
                     new_qty = min(current_qty + 1, total_qty)
-                    
                     sheets["equip"].update_cell(cell_equip.row, 4, new_qty)
                 
-                cell_log = sheets["log"].find(str(tid))
+                # 2. 🌟 精準定位找交易編號
+                cell_log = sheets["log"].find(str(tid), in_column=1)
                 if cell_log:
                     sheets["log"].update_cell(cell_log.row, 6, "已歸還") 
                     sheets["log"].update_cell(cell_log.row, 7, admin_name) 
             except Exception as e: 
-                pass
-                # 💡 核心煞車系統：每處理完一個設備，強制休息 1.5 秒
-            time.sleep(1.5)
+                print(f"TID {tid} 錯誤: {e}")
+            
+            # ⚠️ 終極煞車系統：每次處理完休息 2 秒
+            # 這能保證 1 分鐘內絕對不會超過 Google 的 60 次上限！
+            time.sleep(2)
 
-            return {"成功": True, "歸還數量": len(tids_to_return)}
+    return {"成功": True, "歸還數量": len(tids_to_return)}
 
 if __name__ == "__main__":
     import uvicorn
