@@ -38,18 +38,38 @@ db_lock = threading.Lock()
 def sync_data():
     global transaction_id_counter, admins_db, equipments, transactions
     if not sheets: return
-    # 同步幹部
-    for r in sheets["admin"].get_all_records(): admins_db[str(r["幹部代號"])] = r
-    # 同步設備
-    for r in sheets["equip"].get_all_records(): equipments[str(r["設備編號"])] = r
-    # 同步 Log
+    
+    # 1. 同步幹部
+    for r in sheets["admin"].get_all_records(): 
+        admins_db[str(r["幹部代號"])] = r
+        
+    # 2. 同步設備
+    for r in sheets["equip"].get_all_records(): 
+        equipments[str(r["設備編號"])] = r
+        
+    # 3. 同步 Log (🌟 關鍵修正區：對齊欄位名稱)
     recs = sheets["log"].get_all_records()
     transactions.clear()
     max_id = 0
     for r in recs:
-        tid = int(r["交易編號"])
-        if tid > max_id: max_id = tid
-        transactions[tid] = r
+        try:
+            tid = int(r.get("交易編號", 0))
+            if tid > max_id: max_id = tid
+            
+            # 手動將 Google Sheets 的欄位名稱，轉譯成前端看得懂的名稱
+            transactions[tid] = {
+                "交易編號": tid,
+                "設備名稱": str(r.get("設備名稱", "")),
+                "租借人員學號": str(r.get("借用人學號", "")), # 對應試算表 C 欄
+                "租借人員姓名": str(r.get("借用人姓名", "")), # 對應試算表 D 欄
+                "借用時間": str(r.get("借用時間", "")),
+                "狀態": str(r.get("狀態", "")),
+                "處理人員": str(r.get("點收幹部", "")),
+                "歸還時間": str(r.get("歸還時間", ""))
+            }
+        except Exception as e:
+            print(f"解析資料列時發生錯誤: {e}")
+            
     transaction_id_counter = max_id + 1
 
 sync_data()
