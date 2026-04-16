@@ -87,16 +87,25 @@ def sync_equip():
 
 def sync_settings():
     global system_settings
-    if not sheets or "settings" not in sheets: return
+    if not sheets or "settings" not in sheets: 
+        print("錯誤：找不到 settings 工作表")
+        return
     try:
-        # 先給予預設值
+        # 預設值防止崩潰
         new_set = {"借用天數限制": 14, "維護模式": "關閉", "系統公告": "", "Discord網址": "", "Discord逾期網址": ""}
-        for r in sheets["settings"].get_all_records():
+        records = sheets["settings"].get_all_records()
+        
+        for r in records:
+            # 使用 .strip() 去除可能的小寫或空白誤差
             key = str(r.get("設定項目", "")).strip()
-            val = r.get("設定值", "")
-            if key: new_set[key] = val
+            val = str(r.get("設定值", "")).strip()
+            if key:
+                new_set[key] = val
+        
         system_settings = new_set
-    except: pass
+        print(f"✅ 設定同步成功：目前維護模式為 {system_settings.get('維護模式')}")
+    except Exception as e:
+        print(f"❌ 設定同步失敗：{e}")
 
 def sync_log():
     global transactions, transaction_id_counter
