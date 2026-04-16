@@ -60,7 +60,7 @@ def init_sheets():
             s_dict["settings"] = ss.worksheet("settings")
         except:
             print("警告：找不到 settings 工作表")
-        return s_dict
+        return s_dict  
     except Exception as e:
         print(f"Sheets 連線失敗: {e}")
         return None
