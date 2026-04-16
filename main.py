@@ -49,7 +49,7 @@ def init_sheets():
         client = gspread.authorize(creds)
         
         # 🌟 絕對綁定：使用您的試算表唯一 ID，徹底消滅抓錯檔案的問題
-        ss = client.open_by_key("1r0vqm8FU3KWp_56fjTW-aDW-8JPK5poXQ9jk-IhZ9Sc")
+        ss = client.open_by_key("1r0vqm8FU3KWp_56fJTW-aDW-8JPK5poXQ9jk-IhZ9Sc")
         
         s_dict = {
             "admin": ss.worksheet("admins"),
