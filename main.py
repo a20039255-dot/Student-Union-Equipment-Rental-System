@@ -77,13 +77,28 @@ def sync_admin():
 
 def sync_equip():
     global equipments
-    if not sheets: return
+    if not sheets or "equip" not in sheets: 
+        print("❌ 錯誤：找不到 equip 工作表物件")
+        return
     try:
-        equipments.clear() # 🌟 驅魔：清空舊記憶
-        for r in sheets["equip"].get_all_records():
-            eid = str(r.get("設備編號", "")).strip()
-            if eid: equipments[eid] = r
-    except: pass
+        equipments.clear()
+        # 🌟 改用更穩定的方式讀取
+        sheet_data = sheets["equip"].get_all_values()
+        if len(sheet_data) < 2:
+            print("⚠️ 警告：equipments 工作表看起來是空的（只有標題或完全沒資料）")
+            return
+
+        headers = sheet_data[0] # 第一列標題
+        for row in sheet_data[1:]: # 從第二列開始讀
+            # 將每一列轉成字典，模擬 get_all_records 的行為
+            item = dict(zip(headers, row))
+            eid = str(item.get("設備編號", "")).strip()
+            if eid:
+                equipments[eid] = item
+        
+        print(f"✅ 成功同步設備：共 {len(equipments)} 項")
+    except Exception as e:
+        print(f"❌ sync_equip 發生嚴重錯誤：{e}")
 
 def sync_settings():
     global system_settings
