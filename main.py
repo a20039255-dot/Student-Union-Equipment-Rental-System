@@ -181,6 +181,9 @@ def approve_batch(data: dict):
     if not tids: return {"成功": False, "訊息": "無資料"}
     status = "借用中" if action == "核准" else "已駁回"
     
+    # 🌟 取得幹部按下按鈕的當下時間
+    current_time = get_tw_time() 
+    
     with db_lock:
         try:
             log_updates = []
@@ -190,14 +193,21 @@ def approve_batch(data: dict):
             for tid in tids:
                 str_tid = str(tid)
                 
-                # 🛡️ 終極防護罩：檢查這筆交易「現在」是不是真的在「待審核」狀態
                 current_status = transactions.get(int(tid), {}).get("狀態")
                 if current_status != "待審核":
-                    continue # 🌟 如果已經被核准或駁回過，直接跳過，絕不重複扣庫存！
+                    continue 
 
                 if str_tid in log_mapping:
                     row = log_mapping[str_tid]
-                    log_updates.append({'range': f'F{row}:G{row}', 'values': [[status, admin]]})
+                    
+                    # 🌟 核心修正：判斷動作
+                    if action == "核准":
+                        # 如果是核准，就把 E欄(借用時間)、F欄(狀態)、G欄(幹部) 一起覆蓋更新！
+                        log_updates.append({'range': f'E{row}:G{row}', 'values': [[current_time, status, admin]]})
+                    else:
+                        # 如果是駁回，時間不用動，只要改 F欄(狀態) 跟 G欄(幹部)
+                        log_updates.append({'range': f'F{row}:G{row}', 'values': [[status, admin]]})
+                        
                     if action == "駁回" and int(tid) in transactions:
                         ename = transactions[int(tid)].get("設備名稱")
                         if ename: inventory_add[ename] = inventory_add.get(ename, 0) + 1
