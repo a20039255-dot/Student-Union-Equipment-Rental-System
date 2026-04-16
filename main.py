@@ -133,29 +133,41 @@ def return_by_sid(data: dict):
     code = str(data.get("學號")).strip()
     admin = data.get("點收幹部")
     r_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-    count = 0
     
     with db_lock:
+        # 1. 蒐集要歸還的 ID，並「聚合統計」要加回的設備數量
+        to_return_tids = []
+        inventory_add = {}
+        
         for tid, req in transactions.items():
-            # 🌟 關鍵修正：這裡必須使用 "租借人員學號"，對應我們翻譯過後的名稱
             if req["狀態"] == "借用中" and str(req["租借人員學號"]).endswith(code):
-                cell = sheets["log"].find(str(tid), in_column=1)
-                if cell:
-                    # 1. 更新 Log 狀態、幹部與歸還時間
-                    sheets["log"].update_cell(cell.row, 6, "已歸還")
-                    sheets["log"].update_cell(cell.row, 7, admin)
-                    sheets["log"].update_cell(cell.row, 8, r_time)
-                    
-                    # 2. 自動回填 equipments 的設備庫存
-                    equip_name = req["設備名稱"]
-                    cell_equip = sheets["equip"].find(equip_name, in_column=2)
-                    if cell_equip:
-                        curr_stock = int(sheets["equip"].cell(cell_equip.row, 4).value)
-                        sheets["equip"].update_cell(cell_equip.row, 4, curr_stock + 1)
-                        
-                    count += 1
-                    time.sleep(0.5) # 保護 Google Sheets API 不被阻擋
-                    
+                to_return_tids.append(tid)
+                ename = req["設備名稱"]
+                # 計算每種設備總共要加回多少 (例如：CALL機要加 5 台)
+                inventory_add[ename] = inventory_add.get(ename, 0) + 1
+                
+        if not to_return_tids:
+            return {"成功": False, "訊息": "找不到符合的借用紀錄"}
+
+        # 2. 批次更新 Log 紀錄
+        count = 0
+        for tid in to_return_tids:
+            cell = sheets["log"].find(str(tid), in_column=1)
+            if cell:
+                # 🌟 優化 1：將三次寫入合併為一次範圍寫入 (更新 F, G, H 欄)
+                sheets["log"].update(f"F{cell.row}:H{cell.row}", [["已歸還", admin, r_time]])
+                count += 1
+                time.sleep(1) # 增加 1 秒緩衝，保護 API 不被 Google 鎖定
+        
+        # 3. 批次更新設備庫存
+        for ename, qty in inventory_add.items():
+            cell_equip = sheets["equip"].find(ename, in_column=2)
+            if cell_equip:
+                curr_stock = int(sheets["equip"].cell(cell_equip.row, 4).value)
+                # 🌟 優化 2：一次把總歸還數量加回去
+                sheets["equip"].update_cell(cell_equip.row, 4, curr_stock + qty)
+                time.sleep(1)
+        
         sync_data()
         return {"成功": True, "歸還數量": count}
 if __name__ == "__main__":
