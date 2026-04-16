@@ -174,6 +174,7 @@ def borrow(data: dict):
         except Exception as e:
             print(f"Borrow Error: {e}")
             return {"成功": False, "訊息": "伺服器處理異常"}
+        
 @app.post("/admin/approve_batch")
 def approve_batch(data: dict):
     tids = data.get("交易編號清單", [])
