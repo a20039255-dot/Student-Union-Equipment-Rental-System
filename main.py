@@ -146,52 +146,63 @@ def get_trans(): sync_log(); return transactions
 @app.post("/borrow_batch")
 def borrow(data: dict):
     global transaction_id_counter, system_settings, transactions, equipments
-    sync_settings() 
-    sync_log()
-    sync_equip()
     
-    if system_settings.get("維護模式") == "開啟":
-        return {"成功": False, "訊息": "系統維護中，目前暫停借用服務！請稍後再試。"}
+    # 強制確保資料是最新的
+    try:
+        sync_settings() 
+        sync_log()
+        sync_equip()
+    except Exception as e:
+        print(f"Sync Error: {e}")
 
-    sid, sname, items = data.get("租借人員學號"), data.get("租借人員姓名"), data.get("設備清單")
+    if system_settings.get("維護模式") == "開啟":
+        return {"成功": False, "訊息": "系統維護中，目前暫停借用服務！"}
+
+    sid = str(data.get("租借人員學號", "")).strip()
+    sname = data.get("租借人員姓名")
+    items = data.get("設備清單", [])
     
-    # 🌟 核心防護：計算該學生目前所有「待審核」和「借用中」的設備數量
+    if not sid or not items:
+        return {"成功": False, "訊息": "申請資料不完整"}
+    
+    # 🌟 核心防護：加上安全性檢查，避免 transactions 為空時報錯
     user_borrowed = {}
-    for tid, req in transactions.items():
-        if str(req.get("租借人員學號")).strip() in str(sid) and req.get("狀態") in ["待審核", "借用中"]:
-            ename = req.get("設備名稱")
-            user_borrowed[ename] = user_borrowed.get(ename, 0) + 1
+    if transactions:
+        for tid, req in transactions.items():
+            # 增加防呆：確保欄位存在且不是 None
+            req_sid = str(req.get("租借人員學號", "")).strip()
+            req_status = req.get("狀態", "")
+            if sid in req_sid and req_status in ["待審核", "借用中"]:
+                ename = req.get("設備名稱")
+                user_borrowed[ename] = user_borrowed.get(ename, 0) + 1
             
     with db_lock:
         try:
             b_time = get_tw_time()
             new_rows = []
             equip_updates = []
-            equip_mapping = get_row_mapping(sheets["equip"], 1)
-            stocks = sheets["equip"].col_values(4)
             
-            # 🌟 在寫入資料前，先進行超額驗證！
+            # 這裡我們直接從 Google 抓取最新庫存，不要相信記憶體，最保險！
+            equip_mapping = get_row_mapping(sheets["equip"], 1)
+            stocks_col = sheets["equip"].col_values(4) # 假設數量在第 D 欄
+            
             for item in items:
                 ename = item["name"]
                 qty = int(item["qty"])
                 
                 # 尋找該設備的上限
-                limit = 1
+                limit = 99 # 預設一個大數字
                 for eid, eq in equipments.items():
                     if eq.get("設備名稱") == ename:
-                        try: limit = int(eq.get("單次借用上限", eq.get("借用上限", 1)))
-                        except: pass
+                        limit = int(eq.get("單次借用上限", eq.get("借用上限", 1)))
                         break
                 
-                # 判斷：(已經借的 + 這次要借的) 是否大於 總上限
+                # 超額驗證
                 current_b = user_borrowed.get(ename, 0)
                 if current_b + qty > limit:
-                    return {
-                        "成功": False, 
-                        "訊息": f"【{ename}】已達配額限制！您目前已持有 {current_b} 個，此次欲借 {qty} 個，超過總上限 {limit} 個。"
-                    }
-                    
-            # 驗證通過，正式寫入資料表
+                    return {"成功": False, "訊息": f"【{ename}】已達配額限制！(目前持有:{current_b}, 上限:{limit})"}
+            
+            # 驗證通過，準備寫入
             for item in items:
                 ename = item["name"]
                 qty = int(item["qty"])
@@ -200,27 +211,30 @@ def borrow(data: dict):
                 for _ in range(qty):
                     new_rows.append([transaction_id_counter, ename, sid, sname, b_time, "待審核", "", ""])
                     transaction_id_counter += 1
-                    
+                
+                # 更新庫存
                 if eid in equip_mapping:
-                    row = equip_mapping[eid]
-                    try: curr = int(stocks[row - 1])
-                    except: curr = 0
-                    equip_updates.append({'range': f'D{row}', 'values': [[curr - qty]]})
-                    
+                    row_idx = equip_mapping[eid]
+                    try:
+                        # 確保 stock 讀取正常
+                        current_stock = int(stocks_col[row_idx - 1]) if row_idx <= len(stocks_col) else 0
+                        equip_updates.append({'range': f'D{row_idx}', 'values': [[current_stock - qty]]})
+                    except: pass
+            
             if new_rows: sheets["log"].append_rows(new_rows)
             if equip_updates: sheets["equip"].batch_update(equip_updates)
             
+            # Discord 通知 (包起來避免 Discord 故障導致整單失敗)
             try:
-                item_summary = ", ".join([f"{i['name']} x{i['qty']}" for i in items])
-                discord_msg = f"🔔 **【新設備借用申請】**\n👤 借用人：`{sname}`\n📦 品項：`{item_summary}`\n👉 請部長盡速至後台審核！"
-                send_discord_notify(discord_msg, "Discord網址")
+                msg = f"🔔 **新申請**: `{sname}` 借了 `{', '.join([f'{i['name']}x{i['qty']}' for i in items])}`"
+                send_discord_notify(msg, system_settings.get("Discord網址"))
             except: pass
             
             sync_log()
             return {"成功": True}
         except Exception as e:
-            print(f"Borrow Error: {e}")
-            return {"成功": False, "訊息": "伺服器處理異常"}
+            print(f"CRITICAL BORROW ERROR: {e}") # 這行會在 Cloud Run Log 顯示噴在哪
+            return {"成功": False, "訊息": f"伺服器寫入失敗: {str(e)}"}
         
 @app.post("/admin/approve_batch")
 def approve_batch(data: dict):
