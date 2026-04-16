@@ -22,9 +22,11 @@ def get_tw_time():
     tw_tz = timezone(timedelta(hours=8))
     return datetime.now(tw_tz).strftime("%Y-%m-%d %H:%M")
 
-def send_discord_notify(message):
+def send_discord_notify(message, webhook_name="Discord網址"):
     global system_settings
-    webhook_url = system_settings.get("Discord網址")
+    # 🌟 尋找指定的 webhook，如果沒設定，就退回使用預設的「Discord網址」防呆
+    webhook_url = system_settings.get(webhook_name) or system_settings.get("Discord網址")
+    
     if not webhook_url or "discord.com" not in webhook_url: return
     try: requests.post(webhook_url, json={"content": message}, timeout=5)
     except: pass
@@ -337,7 +339,7 @@ def check_overdue():
             msg += f"\n\n...以及其他 {len(overdue_list) - 15} 筆，請至管理後台查看完整清單。"
         msg += "\n\n👉 請值班幹部協助催討！"
         
-        send_discord_notify(msg)
+        send_discord_notify(msg, "Discord逾期網址")
         return {"發送成功": True, "逾期筆數": len(overdue_list)}
     else:
         return {"發送成功": False, "訊息": "目前沒有逾期設備，大家都很乖！"}
