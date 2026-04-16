@@ -130,20 +130,34 @@ def return_item(data: dict):
 
 @app.post("/return_by_student")
 def return_by_sid(data: dict):
-    code, admin = str(data.get("學號")), data.get("點收幹部")
+    code = str(data.get("學號")).strip()
+    admin = data.get("點收幹部")
     r_time = datetime.now().strftime("%Y-%m-%d %H:%M")
     count = 0
+    
     with db_lock:
         for tid, req in transactions.items():
-            if req["狀態"] == "借用中" and str(req["借用人學號"]).endswith(code):
+            # 🌟 關鍵修正：這裡必須使用 "租借人員學號"，對應我們翻譯過後的名稱
+            if req["狀態"] == "借用中" and str(req["租借人員學號"]).endswith(code):
                 cell = sheets["log"].find(str(tid), in_column=1)
-                sheets["log"].update_cell(cell.row, 6, "已歸還")
-                sheets["log"].update_cell(cell.row, 7, admin)
-                sheets["log"].update_cell(cell.row, 8, r_time)
-                count += 1
+                if cell:
+                    # 1. 更新 Log 狀態、幹部與歸還時間
+                    sheets["log"].update_cell(cell.row, 6, "已歸還")
+                    sheets["log"].update_cell(cell.row, 7, admin)
+                    sheets["log"].update_cell(cell.row, 8, r_time)
+                    
+                    # 2. 自動回填 equipments 的設備庫存
+                    equip_name = req["設備名稱"]
+                    cell_equip = sheets["equip"].find(equip_name, in_column=2)
+                    if cell_equip:
+                        curr_stock = int(sheets["equip"].cell(cell_equip.row, 4).value)
+                        sheets["equip"].update_cell(cell_equip.row, 4, curr_stock + 1)
+                        
+                    count += 1
+                    time.sleep(0.5) # 保護 Google Sheets API 不被阻擋
+                    
         sync_data()
         return {"成功": True, "歸還數量": count}
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
