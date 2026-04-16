@@ -84,72 +84,96 @@ def get_equips(): sync_data(); return equipments
 @app.get("/transactions")
 def get_trans(): sync_data(); return transactions
 
+# -----------------------------------------
+# 以下為「極速批量寫入版」API 區塊，請覆蓋原代碼
+# -----------------------------------------
+
 @app.post("/borrow_batch")
 def borrow(data: dict):
     global transaction_id_counter
     sid, sname, items = data.get("租借人員學號"), data.get("租借人員姓名"), data.get("設備清單")
+    
     with db_lock:
-        b_time = get_tw_time() # 🌟 使用台灣時間
+        b_time = get_tw_time()
+        new_rows = []
+        equip_updates = []
+        
         for item in items:
             eid, qty = item["id"], int(item["qty"])
+            # 1. 準備要一次新增的 Log 資料
             for _ in range(qty):
-                sheets["log"].append_row([transaction_id_counter, item["name"], sid, sname, b_time, "待審核", "", ""])
+                new_rows.append([transaction_id_counter, item["name"], sid, sname, b_time, "待審核", "", ""])
                 transaction_id_counter += 1
-            # 扣庫存邏輯
+                
+            # 2. 準備要一次更新的庫存資料
             cell = sheets["equip"].find(eid, in_column=1)
             if cell:
                 curr = int(sheets["equip"].cell(cell.row, 4).value)
-                sheets["equip"].update_cell(cell.row, 4, curr - qty)
+                equip_updates.append({
+                    'range': f'D{cell.row}',
+                    'values': [[curr - qty]]
+                })
+                
+        # 🌟 大絕招：一次性寫入多行 Log (只需 1 次 API 請求，無須 Sleep)
+        if new_rows:
+            sheets["log"].append_rows(new_rows)
+            
+        # 🌟 大絕招：一次性更新所有庫存 (只需 1 次 API 請求，無須 Sleep)
+        if equip_updates:
+            sheets["equip"].batch_update(equip_updates)
+            
         sync_data()
         return {"成功": True}
 
-# 🌟 新增：批量核准/駁回專用通道
 @app.post("/admin/approve_batch")
 def approve_batch(data: dict):
     tids = data.get("交易編號清單", [])
     action = data.get("動作")
     admin = data.get("點收幹部")
     
-    if not tids:
-        return {"成功": False, "訊息": "沒有提供要處理的編號"}
-        
+    if not tids: return {"成功": False, "訊息": "無資料"}
     status = "借用中" if action == "核准" else "已駁回"
     
     with db_lock:
+        log_updates = []
         inventory_add = {}
-        count = 0
         
-        # 1. 批量更新 Log 狀態
         for tid in tids:
             cell = sheets["log"].find(str(tid), in_column=1)
             if cell:
-                # 一次寫入狀態與點收幹部 (F與G欄)
-                sheets["log"].update(f"F{cell.row}:G{cell.row}", [[status, admin]])
-                count += 1
-                
-                # 如果是駁回，需要記錄要加回的庫存
+                log_updates.append({
+                    'range': f'F{cell.row}:G{cell.row}',
+                    'values': [[status, admin]]
+                })
                 if action == "駁回":
                     ename = sheets["log"].cell(cell.row, 2).value
                     inventory_add[ename] = inventory_add.get(ename, 0) + 1
                     
-                time.sleep(0.5) # 保護 Google API 不被鎖
-                
-        # 2. 如果是駁回，批量把庫存加回去
+        # 🌟 一次性更新所有 Log 狀態
+        if log_updates:
+            sheets["log"].batch_update(log_updates)
+            
+        # 🌟 如果是駁回，一次性回填庫存
         if action == "駁回" and inventory_add:
+            equip_updates = []
             for ename, qty in inventory_add.items():
                 c_eq = sheets["equip"].find(ename, in_column=2)
                 if c_eq:
                     curr = int(sheets["equip"].cell(c_eq.row, 4).value)
-                    sheets["equip"].update_cell(c_eq.row, 4, curr + qty)
-                    time.sleep(0.5)
-                    
+                    equip_updates.append({
+                        'range': f'D{c_eq.row}',
+                        'values': [[curr + qty]]
+                    })
+            if equip_updates:
+                sheets["equip"].batch_update(equip_updates)
+                
         sync_data()
-        return {"成功": True, "處理數量": count}
+        return {"成功": True, "處理數量": len(log_updates)}
 
 @app.post("/return")
 def return_item(data: dict):
     tid, admin = int(data.get("交易編號")), data.get("點收幹部")
-    r_time = get_tw_time() # 🌟 使用台灣時間
+    r_time = get_tw_time()
     
     with db_lock:
         cell = sheets["log"].find(str(tid), in_column=1)
@@ -158,21 +182,22 @@ def return_item(data: dict):
             sheets["log"].update(f"F{cell.row}:H{cell.row}", [["已歸還", admin, r_time]])
             c_eq = sheets["equip"].find(ename, in_column=2)
             if c_eq:
-                sheets["equip"].update_cell(c_eq.row, 4, int(sheets["equip"].cell(c_eq.row, 4).value) + 1)
+                curr = int(sheets["equip"].cell(c_eq.row, 4).value)
+                sheets["equip"].update_cell(c_eq.row, 4, curr + 1)
         sync_data()
         return {"成功": True}
 
-# 🌟 已優化為批次聚合處理，解決 Google API 限流問題
 @app.post("/return_by_student")
 def return_by_sid(data: dict):
     code = str(data.get("學號")).strip()
     admin = data.get("點收幹部")
-    r_time = get_tw_time() # 🌟 使用台灣時間
+    r_time = get_tw_time()
     
     with db_lock:
         to_return_tids = []
         inventory_add = {}
         
+        # 1. 蒐集要歸還的 ID 與數量
         for tid, req in transactions.items():
             if req["狀態"] == "借用中" and str(req["租借人員學號"]).endswith(code):
                 to_return_tids.append(tid)
@@ -182,24 +207,35 @@ def return_by_sid(data: dict):
         if not to_return_tids:
             return {"成功": False, "訊息": "找不到符合的借用紀錄"}
 
-        count = 0
+        # 2. 準備打包 Log 更新資料
+        log_updates = []
         for tid in to_return_tids:
             cell = sheets["log"].find(str(tid), in_column=1)
             if cell:
-                # 批次寫入 F, G, H 欄
-                sheets["log"].update(f"F{cell.row}:H{cell.row}", [["已歸還", admin, r_time]])
-                count += 1
-                time.sleep(1) # 保護 API
-        
+                log_updates.append({
+                    'range': f'F{cell.row}:H{cell.row}',
+                    'values': [['已歸還', admin, r_time]]
+                })
+                
+        if log_updates:
+            sheets["log"].batch_update(log_updates) # 🌟 瞬間一次寫入
+            
+        # 3. 準備打包庫存更新資料
+        equip_updates = []
         for ename, qty in inventory_add.items():
             cell_equip = sheets["equip"].find(ename, in_column=2)
             if cell_equip:
                 curr_stock = int(sheets["equip"].cell(cell_equip.row, 4).value)
-                sheets["equip"].update_cell(cell_equip.row, 4, curr_stock + qty)
-                time.sleep(1)
-        
+                equip_updates.append({
+                    'range': f'D{cell_equip.row}',
+                    'values': [[curr_stock + qty]]
+                })
+                
+        if equip_updates:
+            sheets["equip"].batch_update(equip_updates) # 🌟 瞬間一次更新
+            
         sync_data()
-        return {"成功": True, "歸還數量": count}
+        return {"成功": True, "歸還數量": len(log_updates)}
 
 if __name__ == "__main__":
     import uvicorn
