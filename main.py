@@ -138,12 +138,27 @@ def sync_log():
     except: pass
 
 # 初始啟動
-sheets = init_sheets()
-if sheets:
-    sync_admin()
-    sync_equip()
-    sync_log()
-    sync_settings()
+def init_sheets():
+    try:
+        env_key = os.getenv("GOOGLE_JSON_KEY")
+        info = json.loads(env_key) if env_key else json.load(open('google-key.json'))
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(info, SCOPE)
+        client = gspread.authorize(creds)
+        
+        # 綁定唯一 ID
+        ss = client.open_by_key("1r0vqm8FU3KWp_56fjTW-aDW-8JPK5poXQ9jk-IhZ9Sc")
+        
+        # 🌟 這裡必須跟您的試算表標籤「一字不差」
+        s_dict = {
+            "admin": ss.worksheet("admins"),      # 對應 admins 標籤
+            "equip": ss.worksheet("equipments"),  # 對應 equipments 標籤
+            "log": ss.worksheet("log"),           # 對應 log 標籤
+            "settings": ss.worksheet("settings")  # 對應 settings 標籤
+        }
+        return s_dict
+    except Exception as e:
+        print(f"Sheets 連線失敗: {e}")
+        return None
 
 # --- Discord 通知功能 ---
 def send_discord_notify(msg, url):
