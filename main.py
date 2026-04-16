@@ -2,6 +2,7 @@ import os
 import json
 import threading
 import time
+import requests  # 🌟 記得 requirements.txt 要加上 requests
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,10 +18,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 台灣時區校正器
+# ---------------------------------------------------------
+# 🌟 核心工具：時區與通知
+# ---------------------------------------------------------
+
 def get_tw_time():
+    """取得台灣標準時間 (UTC+8)"""
     tw_tz = timezone(timedelta(hours=8))
     return datetime.now(tw_tz).strftime("%Y-%m-%d %H:%M")
+
+def send_discord_notify(message):
+    """發送 Discord 通知 (取代即將停止服務的 LINE Notify)"""
+    global system_settings
+    webhook_url = system_settings.get("Discord網址")
+    
+    if not webhook_url or "discord.com" not in webhook_url:
+        print("未設定 Discord Webhook 網址或網址格式錯誤")
+        return
+    
+    payload = {"content": message}
+    try:
+        # 使用 POST 請求將訊息送往 Discord
+        requests.post(webhook_url, json=payload, timeout=5)
+    except Exception as e:
+        print(f"Discord 傳送失敗: {e}")
+
+# ---------------------------------------------------------
+# 🌟 Google Sheets 初始化
+# ---------------------------------------------------------
 
 SCOPE = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/drive']
 
@@ -32,30 +57,42 @@ def init_sheets():
         client = gspread.authorize(creds)
         ss = client.open("設備管理資料庫")
         
+        # 預設抓取的三張表
         sheets_dict = {
             "admin": ss.worksheet("admins"), 
             "equip": ss.worksheet("equipments"), 
             "log": ss.worksheet("log")
         }
-        # 🌟 嘗試讀取設定表 (加入防呆，萬一表沒建好不會整個崩潰)
-        try: sheets_dict["settings"] = ss.worksheet("settings")
-        except: pass 
+        # 嘗試抓取 settings 表，若無則跳過
+        try:
+            sheets_dict["settings"] = ss.worksheet("settings")
+        except:
+            print("警告：找不到 settings 工作表")
         
         return sheets_dict
     except Exception as e: 
-        print(f"連線失敗: {e}")
+        print(f"Sheets 連線失敗: {e}")
         return None
 
+sheets = init_sheets()
+admins_db, equipments, transactions = {}, {}, {}
+system_settings = {"借用天數限制": 14, "維護模式": "關閉", "系統公告": "", "Discord網址": ""}
+transaction_id_counter = 1
+db_lock = threading.Lock()
+
 # ---------------------------------------------------------
-# 🌟 效能革命：將笨重的 sync_data() 拆分為三個輕量級函數
+# 🌟 數據同步邏輯 (精準同步，提升讀取速度)
 # ---------------------------------------------------------
+
 def sync_admin():
     if not sheets: return
-    for r in sheets["admin"].get_all_records(): admins_db[str(r["幹部代號"])] = r
+    for r in sheets["admin"].get_all_records(): 
+        admins_db[str(r["幹部代號"])] = r
 
 def sync_equip():
     if not sheets: return
-    for r in sheets["equip"].get_all_records(): equipments[str(r["設備編號"])] = r
+    for r in sheets["equip"].get_all_records(): 
+        equipments[str(r["設備編號"])] = r
 
 def sync_log():
     global transaction_id_counter
@@ -80,54 +117,58 @@ def sync_log():
         except: pass
     transaction_id_counter = max_id + 1
 
-    system_settings = {"借用天數限制": 14} # 預設為 14 天
-
 def sync_settings():
     global system_settings
     if not sheets or "settings" not in sheets: return
     try:
+        new_settings = {}
         for r in sheets["settings"].get_all_records():
             key = str(r.get("設定項目", "")).strip()
             val = r.get("設定值", "")
-            if key: system_settings[key] = val
-    except: pass
+            if key: new_settings[key] = val
+        system_settings.update(new_settings)
+    except Exception as e:
+        print(f"設定檔同步失敗: {e}")
 
-# 初始化啟動時，抓取一次即可
-sync_admin()
-sync_equip()
-sync_log()
-sync_settings()
+# 啟動時預載資料
+if sheets:
+    sync_admin()
+    sync_equip()
+    sync_log()
+    sync_settings()
 
 # ---------------------------------------------------------
-# 🌟 API 路由：精準讀取，拒絕浪費流量
+# 🌟 API 路由區
 # ---------------------------------------------------------
 
 @app.get("/settings")
 def get_settings():
-    sync_settings() # 每次網頁要求時，去試算表抓最新數字
+    sync_settings()
     return system_settings
 
 @app.post("/admin/login")
 def admin_login(data: dict):
-    sync_admin() # 登入時只檢查幹部表
+    sync_admin()
     code = str(data.get("代號")).strip()
     if code in admins_db: return {"成功": True, "姓名": admins_db[code]["幹部名稱"]}
     return {"成功": False, "訊息": "代號不存在"}
 
 @app.get("/equipments")
 def get_equips(): 
-    sync_equip() # 學生開網頁時，只下載設備表 (速度提升 3 倍)
+    sync_equip()
     return equipments
 
 @app.get("/transactions")
 def get_trans(): 
-    sync_log() # 幹部開網頁時，只下載 Log 表 (速度提升 3 倍)
+    sync_log()
     return transactions
 
 @app.post("/borrow_batch")
 def borrow(data: dict):
     global transaction_id_counter
-    sid, sname, items = data.get("租借人員學號"), data.get("租借人員姓名"), data.get("設備清單")
+    sid = data.get("租借人員學號")
+    sname = data.get("租借人員姓名")
+    items = data.get("設備清單")
     
     with db_lock:
         b_time = get_tw_time()
@@ -145,10 +186,17 @@ def borrow(data: dict):
                 curr = int(sheets["equip"].cell(cell.row, 4).value)
                 equip_updates.append({'range': f'D{cell.row}', 'values': [[curr - qty]]})
                 
+        # 批量寫入 Google Sheets
         if new_rows: sheets["log"].append_rows(new_rows)
         if equip_updates: sheets["equip"].batch_update(equip_updates)
         
-        # 🌟 寫完直接回報成功，不浪費時間重新下載，讓前端自己去抓最新資料
+        # 🌟 Discord 自動通知
+        try:
+            item_summary = ", ".join([f"{i['name']} x{i['qty']}" for i in items])
+            discord_msg = f"🔔 **【新設備借用申請】**\n👤 借用人：`{sname}`\n📦 品項：`{item_summary}`\n👉 請部長盡速至後台審核！"
+            send_discord_notify(discord_msg)
+        except: pass
+
         return {"成功": True}
 
 @app.post("/admin/approve_batch")
@@ -210,21 +258,19 @@ def return_by_sid(data: dict):
     with db_lock:
         to_return_tids = []
         inventory_add = {}
-        
         for tid, req in transactions.items():
             if req["狀態"] == "借用中" and str(req["租借人員學號"]).endswith(code):
                 to_return_tids.append(tid)
                 ename = req["設備名稱"]
                 inventory_add[ename] = inventory_add.get(ename, 0) + 1
                 
-        if not to_return_tids: return {"成功": False, "訊息": "找不到符合的借用紀錄"}
+        if not to_return_tids: return {"成功": False, "訊息": "找不到紀錄"}
 
         log_updates = []
         for tid in to_return_tids:
             cell = sheets["log"].find(str(tid), in_column=1)
             if cell:
                 log_updates.append({'range': f'F{cell.row}:H{cell.row}', 'values': [['已歸還', admin, r_time]]})
-                
         if log_updates: sheets["log"].batch_update(log_updates)
             
         equip_updates = []
@@ -233,11 +279,11 @@ def return_by_sid(data: dict):
             if cell_equip:
                 curr_stock = int(sheets["equip"].cell(cell_equip.row, 4).value)
                 equip_updates.append({'range': f'D{cell_equip.row}', 'values': [[curr_stock + qty]]})
-                
         if equip_updates: sheets["equip"].batch_update(equip_updates)
             
         return {"成功": True, "歸還數量": len(log_updates)}
 
 if __name__ == "__main__":
     import uvicorn
+    # Cloud Run 會提供 PORT 環境變數，預設為 8080
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
