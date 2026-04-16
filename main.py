@@ -24,9 +24,8 @@ def get_tw_time():
 
 def send_discord_notify(message, webhook_name="Discord網址"):
     global system_settings
-    # 🌟 尋找指定的 webhook，如果沒設定，就退回使用預設的「Discord網址」防呆
+    # 支援頻道分流：找不到指定鑰匙時，退回預設頻道
     webhook_url = system_settings.get(webhook_name) or system_settings.get("Discord網址")
-    
     if not webhook_url or "discord.com" not in webhook_url: return
     try: requests.post(webhook_url, json={"content": message}, timeout=5)
     except: pass
@@ -54,7 +53,7 @@ def init_sheets():
 
 sheets = init_sheets()
 admins_db, equipments, transactions = {}, {}, {}
-system_settings = {"借用天數限制": 14, "維護模式": "關閉", "系統公告": "", "Discord網址": ""}
+system_settings = {"借用天數限制": 14, "維護模式": "關閉", "系統公告": "", "Discord網址": "", "Discord逾期網址": ""}
 transaction_id_counter = 1
 db_lock = threading.Lock()
 
@@ -105,11 +104,7 @@ if sheets:
     sync_log()
     sync_settings()
 
-# ---------------------------------------------------------
-# 🌟 核心防禦工具：一次性抓取整欄位，絕對不產生額外 API 請求
-# ---------------------------------------------------------
 def get_row_mapping(sheet, col_index=1):
-    """取得某個欄位所有值對應的行號字典"""
     try:
         values = sheet.col_values(col_index)
         return {str(val): idx + 1 for idx, val in enumerate(values)}
@@ -163,7 +158,7 @@ def borrow(data: dict):
             try:
                 item_summary = ", ".join([f"{i['name']} x{i['qty']}" for i in items])
                 discord_msg = f"🔔 **【新設備借用申請】**\n👤 借用人：`{sname}`\n📦 品項：`{item_summary}`\n👉 請部長盡速至後台審核！"
-                send_discord_notify(discord_msg)
+                send_discord_notify(discord_msg, "Discord網址")
             except: pass
             
             sync_log()
@@ -180,8 +175,6 @@ def approve_batch(data: dict):
     
     if not tids: return {"成功": False, "訊息": "無資料"}
     status = "借用中" if action == "核准" else "已駁回"
-    
-    # 🌟 取得幹部按下按鈕的當下時間
     current_time = get_tw_time() 
     
     with db_lock:
@@ -192,20 +185,16 @@ def approve_batch(data: dict):
             
             for tid in tids:
                 str_tid = str(tid)
-                
                 current_status = transactions.get(int(tid), {}).get("狀態")
                 if current_status != "待審核":
                     continue 
 
                 if str_tid in log_mapping:
                     row = log_mapping[str_tid]
-                    
-                    # 🌟 核心修正：判斷動作
+                    # 核准時同時更新借用時間，駁回則只更新狀態與幹部
                     if action == "核准":
-                        # 如果是核准，就把 E欄(借用時間)、F欄(狀態)、G欄(幹部) 一起覆蓋更新！
                         log_updates.append({'range': f'E{row}:G{row}', 'values': [[current_time, status, admin]]})
                     else:
-                        # 如果是駁回，時間不用動，只要改 F欄(狀態) 跟 G欄(幹部)
                         log_updates.append({'range': f'F{row}:G{row}', 'values': [[status, admin]]})
                         
                     if action == "駁回" and int(tid) in transactions:
@@ -239,7 +228,6 @@ def return_item(data: dict):
     
     with db_lock:
         try:
-            # 🛡️ 終極防護罩：檢查是否真的是「借用中」
             current_status = transactions.get(tid, {}).get("狀態")
             if current_status != "借用中":
                 return {"成功": False, "訊息": "該設備已被歸還或非借用狀態"}
@@ -309,46 +297,33 @@ def return_by_sid(data: dict):
 
 @app.get("/cron/overdue_notify")
 def check_overdue():
-    """每日定時稽查逾期設備，並發送 Discord 通知"""
-    # 確保資料是最新的
     sync_log()
     sync_settings()
-    
-    try:
-        max_days = int(system_settings.get("借用天數限制", 14))
-    except:
-        max_days = 14
+    try: max_days = int(system_settings.get("借用天數限制", 14))
+    except: max_days = 14
         
     today = datetime.now(timezone(timedelta(hours=8)))
     overdue_list = []
     
-    # 遍歷所有紀錄，尋找借用中的逾期設備
     for tid, req in transactions.items():
         if req.get("狀態") == "借用中":
             b_time_str = req.get("借用時間", "")
             if b_time_str:
                 try:
-                    # 將文字時間轉換為 Python 可以計算的時間物件
                     b_date = datetime.strptime(b_time_str, "%Y-%m-%d %H:%M").replace(tzinfo=timezone(timedelta(hours=8)))
                     diff_days = (today - b_date).days
-                    
                     if diff_days > max_days:
                         overdue_days = diff_days - max_days
                         overdue_list.append(f"🔹 **{req['租借人員姓名']}**\n  └ 設備：`{req['設備名稱']}` (已逾期 {overdue_days} 天)")
-                except Exception as e:
-                    print(f"時間解析錯誤: {e}")
-                    pass
+                except: pass
     
-    # 如果有逾期名單，就發送 Discord 通知
     if overdue_list:
-        # 為了避免訊息太長被 Discord 擋下，最多顯示前 15 筆
         display_list = overdue_list[:15]
         msg = f"🚨 **【設備逾期警告】** 🚨\n目前共有 **{len(overdue_list)}** 筆未歸還設備已逾期（超過 {max_days} 天）：\n\n"
         msg += "\n".join(display_list)
         if len(overdue_list) > 15:
             msg += f"\n\n...以及其他 {len(overdue_list) - 15} 筆，請至管理後台查看完整清單。"
         msg += "\n\n👉 請值班幹部協助催討！"
-        
         send_discord_notify(msg, "Discord逾期網址")
         return {"發送成功": True, "逾期筆數": len(overdue_list)}
     else:
