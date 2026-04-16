@@ -38,12 +38,21 @@ def init_sheets():
         info = json.loads(env_key) if env_key else json.load(open('google-key.json'))
         creds = ServiceAccountCredentials.from_json_keyfile_dict(info, SCOPE)
         client = gspread.authorize(creds)
-        ss = client.open("設備管理資料庫")
+        
+        # 🌟 終極驅魔：不再用名稱尋找，直接綁定這份試算表的唯一 ID！
+        ss = client.open_by_key("1r0vqm8FU3KWp_56fjTW-aDW-8JPK5poXQ9jk-IhZ9Sc")
+        
         sheets_dict = {
             "admin": ss.worksheet("admins"), 
             "equip": ss.worksheet("equipments"), 
             "log": ss.worksheet("log")
         }
+        try: sheets_dict["settings"] = ss.worksheet("settings")
+        except: pass
+        return sheets_dict
+    except Exception as e: 
+        print(f"Sheets 連線失敗: {e}")
+        return None
         try: sheets_dict["settings"] = ss.worksheet("settings")
         except: pass
         return sheets_dict
