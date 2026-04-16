@@ -31,15 +31,20 @@ def init_sheets():
         creds = ServiceAccountCredentials.from_json_keyfile_dict(info, SCOPE)
         client = gspread.authorize(creds)
         ss = client.open("設備管理資料庫")
-        return {"admin": ss.worksheet("admins"), "equip": ss.worksheet("equipments"), "log": ss.worksheet("log")}
+        
+        sheets_dict = {
+            "admin": ss.worksheet("admins"), 
+            "equip": ss.worksheet("equipments"), 
+            "log": ss.worksheet("log")
+        }
+        # 🌟 嘗試讀取設定表 (加入防呆，萬一表沒建好不會整個崩潰)
+        try: sheets_dict["settings"] = ss.worksheet("settings")
+        except: pass 
+        
+        return sheets_dict
     except Exception as e: 
         print(f"連線失敗: {e}")
         return None
-
-sheets = init_sheets()
-admins_db, equipments, transactions = {}, {}, {}
-transaction_id_counter = 1
-db_lock = threading.Lock()
 
 # ---------------------------------------------------------
 # 🌟 效能革命：將笨重的 sync_data() 拆分為三個輕量級函數
@@ -75,14 +80,33 @@ def sync_log():
         except: pass
     transaction_id_counter = max_id + 1
 
+    system_settings = {"借用天數限制": 14} # 預設為 14 天
+
+def sync_settings():
+    global system_settings
+    if not sheets or "settings" not in sheets: return
+    try:
+        for r in sheets["settings"].get_all_records():
+            key = str(r.get("設定項目", "")).strip()
+            val = r.get("設定值", "")
+            if key: system_settings[key] = val
+    except: pass
+
 # 初始化啟動時，抓取一次即可
 sync_admin()
 sync_equip()
 sync_log()
+sync_settings()
 
 # ---------------------------------------------------------
 # 🌟 API 路由：精準讀取，拒絕浪費流量
 # ---------------------------------------------------------
+
+@app.get("/settings")
+def get_settings():
+    sync_settings() # 每次網頁要求時，去試算表抓最新數字
+    return system_settings
+
 @app.post("/admin/login")
 def admin_login(data: dict):
     sync_admin() # 登入時只檢查幹部表
