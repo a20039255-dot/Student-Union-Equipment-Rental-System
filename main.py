@@ -129,7 +129,15 @@ def get_trans(): sync_log(); return transactions
 
 @app.post("/borrow_batch")
 def borrow(data: dict):
-    global transaction_id_counter
+    global transaction_id_counter, system_settings
+    
+    # 🌟 1. 每次有人借用前，強制先同步一次最新設定！
+    sync_settings() 
+    
+    # 🌟 2. 檢查是否處於維護模式，如果是，直接退回！
+    if system_settings.get("維護模式") == "開啟":
+        return {"成功": False, "訊息": "系統維護中，目前暫停借用服務！請稍後再試。"}
+
     sid, sname, items = data.get("租借人員學號"), data.get("租借人員姓名"), data.get("設備清單")
     
     with db_lock:
@@ -166,7 +174,6 @@ def borrow(data: dict):
         except Exception as e:
             print(f"Borrow Error: {e}")
             return {"成功": False, "訊息": "伺服器處理異常"}
-
 @app.post("/admin/approve_batch")
 def approve_batch(data: dict):
     tids = data.get("交易編號清單", [])
