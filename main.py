@@ -58,11 +58,15 @@ transaction_id_counter = 1
 db_lock = threading.Lock()
 
 def sync_admin():
+    global admins_db
     if not sheets: return
+    admins_db.clear() # 🌟 驅魔關鍵：清空舊記憶
     for r in sheets["admin"].get_all_records(): admins_db[str(r["幹部代號"])] = r
 
 def sync_equip():
+    global equipments
     if not sheets: return
+    equipments.clear() # 🌟 驅魔關鍵：清空舊庫存記憶
     for r in sheets["equip"].get_all_records(): equipments[str(r["設備編號"])] = r
 
 def sync_log():
@@ -92,10 +96,13 @@ def sync_settings():
     global system_settings
     if not sheets or "settings" not in sheets: return
     try:
+        # 🌟 驅魔關鍵：重置回預設狀態，避免舊設定卡住
+        new_settings = {"借用天數限制": 14, "維護模式": "關閉", "系統公告": "", "Discord網址": "", "Discord逾期網址": ""}
         for r in sheets["settings"].get_all_records():
             key = str(r.get("設定項目", "")).strip()
             val = r.get("設定值", "")
-            if key: system_settings[key] = val
+            if key: new_settings[key] = val
+        system_settings = new_settings
     except: pass
 
 if sheets:
