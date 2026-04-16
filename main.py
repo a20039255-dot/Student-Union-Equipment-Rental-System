@@ -129,17 +129,23 @@ def get_trans(): sync_log(); return transactions
 
 @app.post("/borrow_batch")
 def borrow(data: dict):
-    global transaction_id_counter, system_settings
-    
-    # 🌟 1. 每次有人借用前，強制先同步一次最新設定！
+    global transaction_id_counter, system_settings, transactions, equipments
     sync_settings() 
+    sync_log()
+    sync_equip()
     
-    # 🌟 2. 檢查是否處於維護模式，如果是，直接退回！
     if system_settings.get("維護模式") == "開啟":
         return {"成功": False, "訊息": "系統維護中，目前暫停借用服務！請稍後再試。"}
 
     sid, sname, items = data.get("租借人員學號"), data.get("租借人員姓名"), data.get("設備清單")
     
+    # 🌟 核心防護：計算該學生目前所有「待審核」和「借用中」的設備數量
+    user_borrowed = {}
+    for tid, req in transactions.items():
+        if str(req.get("租借人員學號")).strip() in str(sid) and req.get("狀態") in ["待審核", "借用中"]:
+            ename = req.get("設備名稱")
+            user_borrowed[ename] = user_borrowed.get(ename, 0) + 1
+            
     with db_lock:
         try:
             b_time = get_tw_time()
@@ -148,10 +154,35 @@ def borrow(data: dict):
             equip_mapping = get_row_mapping(sheets["equip"], 1)
             stocks = sheets["equip"].col_values(4)
             
+            # 🌟 在寫入資料前，先進行超額驗證！
             for item in items:
-                eid, qty = str(item["id"]), int(item["qty"])
+                ename = item["name"]
+                qty = int(item["qty"])
+                
+                # 尋找該設備的上限
+                limit = 1
+                for eid, eq in equipments.items():
+                    if eq.get("設備名稱") == ename:
+                        try: limit = int(eq.get("單次借用上限", eq.get("借用上限", 1)))
+                        except: pass
+                        break
+                
+                # 判斷：(已經借的 + 這次要借的) 是否大於 總上限
+                current_b = user_borrowed.get(ename, 0)
+                if current_b + qty > limit:
+                    return {
+                        "成功": False, 
+                        "訊息": f"【{ename}】已達配額限制！您目前已持有 {current_b} 個，此次欲借 {qty} 個，超過總上限 {limit} 個。"
+                    }
+                    
+            # 驗證通過，正式寫入資料表
+            for item in items:
+                ename = item["name"]
+                qty = int(item["qty"])
+                eid = str(item["id"])
+                
                 for _ in range(qty):
-                    new_rows.append([transaction_id_counter, item["name"], sid, sname, b_time, "待審核", "", ""])
+                    new_rows.append([transaction_id_counter, ename, sid, sname, b_time, "待審核", "", ""])
                     transaction_id_counter += 1
                     
                 if eid in equip_mapping:
