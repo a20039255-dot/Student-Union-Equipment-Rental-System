@@ -103,22 +103,48 @@ def borrow(data: dict):
         sync_data()
         return {"成功": True}
 
-@app.post("/admin/approve")
-def approve(data: dict):
-    tid, action, admin = int(data.get("交易編號")), data.get("動作"), data.get("點收幹部")
+# 🌟 新增：批量核准/駁回專用通道
+@app.post("/admin/approve_batch")
+def approve_batch(data: dict):
+    tids = data.get("交易編號清單", [])
+    action = data.get("動作")
+    admin = data.get("點收幹部")
+    
+    if not tids:
+        return {"成功": False, "訊息": "沒有提供要處理的編號"}
+        
+    status = "借用中" if action == "核准" else "已駁回"
+    
     with db_lock:
-        cell = sheets["log"].find(str(tid), in_column=1)
-        if cell:
-            status = "借用中" if action == "核准" else "已駁回"
-            sheets["log"].update_cell(cell.row, 6, status)
-            sheets["log"].update_cell(cell.row, 7, admin)
-            if action == "駁回":
-                ename = sheets["log"].cell(cell.row, 2).value
+        inventory_add = {}
+        count = 0
+        
+        # 1. 批量更新 Log 狀態
+        for tid in tids:
+            cell = sheets["log"].find(str(tid), in_column=1)
+            if cell:
+                # 一次寫入狀態與點收幹部 (F與G欄)
+                sheets["log"].update(f"F{cell.row}:G{cell.row}", [[status, admin]])
+                count += 1
+                
+                # 如果是駁回，需要記錄要加回的庫存
+                if action == "駁回":
+                    ename = sheets["log"].cell(cell.row, 2).value
+                    inventory_add[ename] = inventory_add.get(ename, 0) + 1
+                    
+                time.sleep(0.5) # 保護 Google API 不被鎖
+                
+        # 2. 如果是駁回，批量把庫存加回去
+        if action == "駁回" and inventory_add:
+            for ename, qty in inventory_add.items():
                 c_eq = sheets["equip"].find(ename, in_column=2)
                 if c_eq:
-                    sheets["equip"].update_cell(c_eq.row, 4, int(sheets["equip"].cell(c_eq.row, 4).value) + 1)
+                    curr = int(sheets["equip"].cell(c_eq.row, 4).value)
+                    sheets["equip"].update_cell(c_eq.row, 4, curr + qty)
+                    time.sleep(0.5)
+                    
         sync_data()
-        return {"成功": True}
+        return {"成功": True, "處理數量": count}
 
 @app.post("/return")
 def return_item(data: dict):
