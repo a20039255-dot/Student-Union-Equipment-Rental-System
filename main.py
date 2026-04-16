@@ -295,6 +295,53 @@ def return_by_sid(data: dict):
             print(f"Batch Return Error: {e}")
             return {"成功": False, "訊息": "系統連線錯誤，請稍後再試"}
 
+@app.get("/cron/overdue_notify")
+def check_overdue():
+    """每日定時稽查逾期設備，並發送 Discord 通知"""
+    # 確保資料是最新的
+    sync_log()
+    sync_settings()
+    
+    try:
+        max_days = int(system_settings.get("借用天數限制", 14))
+    except:
+        max_days = 14
+        
+    today = datetime.now(timezone(timedelta(hours=8)))
+    overdue_list = []
+    
+    # 遍歷所有紀錄，尋找借用中的逾期設備
+    for tid, req in transactions.items():
+        if req.get("狀態") == "借用中":
+            b_time_str = req.get("借用時間", "")
+            if b_time_str:
+                try:
+                    # 將文字時間轉換為 Python 可以計算的時間物件
+                    b_date = datetime.strptime(b_time_str, "%Y-%m-%d %H:%M").replace(tzinfo=timezone(timedelta(hours=8)))
+                    diff_days = (today - b_date).days
+                    
+                    if diff_days > max_days:
+                        overdue_days = diff_days - max_days
+                        overdue_list.append(f"🔹 **{req['租借人員姓名']}**\n  └ 設備：`{req['設備名稱']}` (已逾期 {overdue_days} 天)")
+                except Exception as e:
+                    print(f"時間解析錯誤: {e}")
+                    pass
+    
+    # 如果有逾期名單，就發送 Discord 通知
+    if overdue_list:
+        # 為了避免訊息太長被 Discord 擋下，最多顯示前 15 筆
+        display_list = overdue_list[:15]
+        msg = f"🚨 **【設備逾期警告】** 🚨\n目前共有 **{len(overdue_list)}** 筆未歸還設備已逾期（超過 {max_days} 天）：\n\n"
+        msg += "\n".join(display_list)
+        if len(overdue_list) > 15:
+            msg += f"\n\n...以及其他 {len(overdue_list) - 15} 筆，請至管理後台查看完整清單。"
+        msg += "\n\n👉 請值班幹部協助催討！"
+        
+        send_discord_notify(msg)
+        return {"發送成功": True, "逾期筆數": len(overdue_list)}
+    else:
+        return {"發送成功": False, "訊息": "目前沒有逾期設備，大家都很乖！"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
