@@ -82,21 +82,33 @@ def sync_equip():
         return
     try:
         equipments.clear()
-        # 🌟 改用更穩定的方式讀取
-        sheet_data = sheets["equip"].get_all_values()
-        if len(sheet_data) < 2:
-            print("⚠️ 警告：equipments 工作表看起來是空的（只有標題或完全沒資料）")
+        # 🌟 改用最原始的 get_all_values，這不會因為格式問題而崩潰
+        raw_data = sheets["equip"].get_all_values()
+        
+        if len(raw_data) < 2:
+            print("⚠️ 警告：equipments 分頁內沒有資料")
             return
 
-        headers = sheet_data[0] # 第一列標題
-        for row in sheet_data[1:]: # 從第二列開始讀
-            # 將每一列轉成字典，模擬 get_all_records 的行為
-            item = dict(zip(headers, row))
-            eid = str(item.get("設備編號", "")).strip()
-            if eid:
+        # 抓取第一列作為標題，並去除所有空格
+        headers = [str(h).strip() for h in raw_data[0]]
+        
+        for row_idx, row in enumerate(raw_data[1:]):
+            # 建立這一列的字典
+            item = {}
+            for i, header in enumerate(headers):
+                if i < len(row):
+                    item[header] = str(row[i]).strip()
+                else:
+                    item[header] = ""
+            
+            # 使用第一欄「設備編號」作為 Key
+            eid = str(row[0]).strip() if len(row) > 0 else ""
+            
+            # 🌟 只有當編號跟名稱都存在時才加入 (防止抓到空行)
+            if eid and item.get("設備名稱"):
                 equipments[eid] = item
         
-        print(f"✅ 成功同步設備：共 {len(equipments)} 項")
+        print(f"✅ 強力同步成功：共 {len(equipments)} 項設備")
     except Exception as e:
         print(f"❌ sync_equip 發生嚴重錯誤：{e}")
 
@@ -188,7 +200,7 @@ def admin_login(data: dict):
 
 @app.get("/equipments")
 def get_equipments():
-    sync_equip()
+    sync_equip() # 🌟 每次被呼叫時都強制同步一次，確保冷啟動後資料立刻進來
     return equipments
 
 @app.get("/transactions")
