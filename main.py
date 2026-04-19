@@ -200,8 +200,39 @@ def admin_login(data: dict):
 
 @app.get("/equipments")
 def get_equipments():
-    sync_equip() # 🌟 每次被呼叫時都強制同步一次，確保冷啟動後資料立刻進來
-    return equipments
+    try:
+        # 1. 檢查連線狀態
+        if not sheets:
+            return {"X光診斷": "Google Sheets 未連線 (sheets 變數為空，請檢查金鑰)"}
+        if "equip" not in sheets:
+            return {"X光診斷": "找不到 equip 綁定，請檢查 init_sheets"}
+        
+        # 2. 強制讀取原始資料
+        raw_data = sheets["equip"].get_all_values()
+        if len(raw_data) < 2:
+            return {"X光診斷": f"設備分頁內沒有資料，只讀到 {len(raw_data)} 列"}
+        
+        # 3. 組合資料
+        headers = [str(h).strip() for h in raw_data[0]]
+        new_eq = {}
+        for row in raw_data[1:]:
+            item = {}
+            for i in range(len(headers)):
+                item[headers[i]] = str(row[i]).strip() if i < len(row) else ""
+            
+            eid = str(row[0]).strip() if len(row) > 0 else ""
+            if eid and item.get("設備名稱"):
+                new_eq[eid] = item
+        
+        # 4. 更新記憶體並回傳
+        global equipments
+        equipments.clear()
+        equipments.update(new_eq)
+        return equipments
+        
+    except Exception as e:
+        # 如果發生任何崩潰，直接把紅字顯示在畫面上！
+        return {"X光診斷": f"程式崩潰啦：{str(e)}"}
 
 @app.get("/transactions")
 def get_transactions():
