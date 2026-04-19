@@ -137,7 +137,7 @@ def sync_log():
         transaction_id_counter = max_id + 1
     except: pass
 
-# 初始啟動
+# 初始啟動...
 def init_sheets():
     try:
         env_key = os.getenv("GOOGLE_JSON_KEY")
