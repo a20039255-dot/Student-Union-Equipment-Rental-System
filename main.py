@@ -201,38 +201,45 @@ def admin_login(data: dict):
 @app.get("/equipments")
 def get_equipments():
     try:
-        # 1. 檢查連線狀態
-        if not sheets:
-            return {"X光診斷": "Google Sheets 未連線 (sheets 變數為空，請檢查金鑰)"}
-        if "equip" not in sheets:
-            return {"X光診斷": "找不到 equip 綁定，請檢查 init_sheets"}
+        import os, json, gspread
+        from oauth2client.service_account import ServiceAccountCredentials
         
-        # 2. 強制讀取原始資料
-        raw_data = sheets["equip"].get_all_values()
-        if len(raw_data) < 2:
-            return {"X光診斷": f"設備分頁內沒有資料，只讀到 {len(raw_data)} 列"}
+        # 1. 檢查金鑰
+        env_key = os.getenv("GOOGLE_JSON_KEY")
+        if not env_key:
+            try:
+                open('google-key.json')
+            except Exception:
+                return {"深層X光": "找不到金鑰！沒有環境變數，也找不到 google-key.json 檔案。"}
+                
+        info = json.loads(env_key) if env_key else json.load(open('google-key.json'))
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(info, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
+        client = gspread.authorize(creds)
         
-        # 3. 組合資料
-        headers = [str(h).strip() for h in raw_data[0]]
-        new_eq = {}
-        for row in raw_data[1:]:
-            item = {}
-            for i in range(len(headers)):
-                item[headers[i]] = str(row[i]).strip() if i < len(row) else ""
+        # 2. 檢查試算表 ID
+        try:
+            ss = client.open_by_key("1r0vqm8FU3KWp_56fjTW-aDW-8JPK5poXQ9jk-IhZ9Sc")
+        except Exception as e:
+            return {"深層X光": f"進不去試算表！權限不足或 ID 錯誤。系統原話: {str(e)}"}
             
-            eid = str(row[0]).strip() if len(row) > 0 else ""
-            if eid and item.get("設備名稱"):
-                new_eq[eid] = item
-        
-        # 4. 更新記憶體並回傳
-        global equipments
-        equipments.clear()
-        equipments.update(new_eq)
-        return equipments
+        # 3. 逐一檢查分頁名稱
+        errors = []
+        for name in ["admins", "equipments", "log", "settings"]:
+            try:
+                ss.worksheet(name)
+            except Exception:
+                errors.append(f"找不到叫做 '{name}' 的分頁")
+                
+        if errors:
+            return {"深層X光": "分頁名稱對不起來：" + "、".join(errors)}
+            
+        # 4. 如果都活著，讀取第一列看看
+        eq_sheet = ss.worksheet("equipments")
+        data = eq_sheet.get_all_values()
+        return {"深層X光": "連線完美！第一列標題是: " + str(data[0] if data else "空的")}
         
     except Exception as e:
-        # 如果發生任何崩潰，直接把紅字顯示在畫面上！
-        return {"X光診斷": f"程式崩潰啦：{str(e)}"}
+        return {"深層X光": f"發生未知崩潰: {str(e)}"}
 
 @app.get("/transactions")
 def get_transactions():
