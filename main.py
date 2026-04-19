@@ -73,25 +73,23 @@ def sync_admin():
             if code: admins_db[code] = r
     except: pass
 
+# --- 正常版：設備同步邏輯 ---
 def sync_equip():
     global equipments
     if not sheets or "equip" not in sheets: 
-        print("❌ 錯誤：找不到 equip 工作表物件")
         return
     try:
         equipments.clear()
-        # 🌟 改用最原始的 get_all_values，這不會因為格式問題而崩潰
+        # 🌟 使用最穩定的 get_all_values，不怕試算表格式亂掉
         raw_data = sheets["equip"].get_all_values()
         
         if len(raw_data) < 2:
-            print("⚠️ 警告：equipments 分頁內沒有資料")
-            return
+            return # 只有標題或沒資料，直接結束
 
-        # 抓取第一列作為標題，並去除所有空格
+        # 抓取第一列作為標題，並去除多餘空白
         headers = [str(h).strip() for h in raw_data[0]]
         
-        for row_idx, row in enumerate(raw_data[1:]):
-            # 建立這一列的字典
+        for row in raw_data[1:]:
             item = {}
             for i, header in enumerate(headers):
                 if i < len(row):
@@ -102,13 +100,49 @@ def sync_equip():
             # 使用第一欄「設備編號」作為 Key
             eid = str(row[0]).strip() if len(row) > 0 else ""
             
-            # 🌟 只有當編號跟名稱都存在時才加入 (防止抓到空行)
+            # 過濾掉不小心打出的隱形空行
             if eid and item.get("設備名稱"):
                 equipments[eid] = item
-        
-        print(f"✅ 強力同步成功：共 {len(equipments)} 項設備")
+                
     except Exception as e:
-        print(f"❌ sync_equip 發生嚴重錯誤：{e}")
+        print(f"❌ 設備同步發生錯誤：{e}")
+
+# def sync_equip():
+#     global equipments
+#     if not sheets or "equip" not in sheets: 
+#         print("❌ 錯誤：找不到 equip 工作表物件")
+#         return
+#     try:
+#         equipments.clear()
+#         # 🌟 改用最原始的 get_all_values，這不會因為格式問題而崩潰
+#         raw_data = sheets["equip"].get_all_values()
+        
+#         if len(raw_data) < 2:
+#             print("⚠️ 警告：equipments 分頁內沒有資料")
+#             return
+
+#         # 抓取第一列作為標題，並去除所有空格
+#         headers = [str(h).strip() for h in raw_data[0]]
+        
+#         for row_idx, row in enumerate(raw_data[1:]):
+#             # 建立這一列的字典
+#             item = {}
+#             for i, header in enumerate(headers):
+#                 if i < len(row):
+#                     item[header] = str(row[i]).strip()
+#                 else:
+#                     item[header] = ""
+            
+#             # 使用第一欄「設備編號」作為 Key
+#             eid = str(row[0]).strip() if len(row) > 0 else ""
+            
+#             # 🌟 只有當編號跟名稱都存在時才加入 (防止抓到空行)
+#             if eid and item.get("設備名稱"):
+#                 equipments[eid] = item
+        
+#         print(f"✅ 強力同步成功：共 {len(equipments)} 項設備")
+#     except Exception as e:
+#         print(f"❌ sync_equip 發生嚴重錯誤：{e}")
 
 def sync_settings():
     global system_settings
@@ -196,6 +230,12 @@ def admin_login(data: dict):
         return {"成功": True, "姓名": admins_db[code].get("幹部名稱")}
     return {"成功": False}
 
+# --- 正常版：API 路由 ---
+@app.get("/equipments")
+def get_equipments():
+    sync_equip() # 每次網頁來要資料時，強制去試算表抓最新狀態
+    return equipments
+
 # @app.get("/equipments")
 # def get_equipments():
 #     try:
@@ -239,34 +279,34 @@ def admin_login(data: dict):
 #     except Exception as e:
 #         return {"深層X光": f"發生未知崩潰: {str(e)}"}
 
-@app.get("/equipments")
-def get_equipments():
-    try:
-        import os, json, gspread
-        from oauth2client.service_account import ServiceAccountCredentials
+# @app.get("/equipments")
+# def get_equipments():
+#     try:
+#         import os, json, gspread
+#         from oauth2client.service_account import ServiceAccountCredentials
         
-        env_key = os.getenv("GOOGLE_JSON_KEY")
-        info = json.loads(env_key) if env_key else json.load(open('google-key.json'))
+#         env_key = os.getenv("GOOGLE_JSON_KEY")
+#         info = json.loads(env_key) if env_key else json.load(open('google-key.json'))
         
-        # 🌟 照妖鏡：把目前使用的金鑰 Email 抓出來
-        current_bot = info.get("client_email", "未知的機器人")
+#         # 🌟 照妖鏡：把目前使用的金鑰 Email 抓出來
+#         current_bot = info.get("client_email", "未知的機器人")
         
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(info, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
-        client = gspread.authorize(creds)
+#         creds = ServiceAccountCredentials.from_json_keyfile_dict(info, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
+#         client = gspread.authorize(creds)
         
-        try:
-            ss = client.open_by_key("1r0vqm8FU3KWp_56fjTW-aDW-8JPK5poXQ9jk-IhZ9Sc")
-            return {"結果": "連線成功！"}
-        except Exception as e:
-            return {
-                "深層X光": "進不去試算表！",
-                "正在敲門的機器人": current_bot,  # 👈 兇手就在這裡
-                "您截圖上允許的機器人": "sheets-robot@equipment-system-493219.iam.gserviceaccount.com",
-                "系統原話": str(e)
-            }
+#         try:
+#             ss = client.open_by_key("1r0vqm8FU3KWp_56fjTW-aDW-8JPK5poXQ9jk-IhZ9Sc")
+#             return {"結果": "連線成功！"}
+#         except Exception as e:
+#             return {
+#                 "深層X光": "進不去試算表！",
+#                 "正在敲門的機器人": current_bot,  # 👈 兇手就在這裡
+#                 "您截圖上允許的機器人": "sheets-robot@equipment-system-493219.iam.gserviceaccount.com",
+#                 "系統原話": str(e)
+#             }
             
-    except Exception as e:
-        return {"深層X光": f"發生未知崩潰: {str(e)}"}
+#     except Exception as e:
+#         return {"深層X光": f"發生未知崩潰: {str(e)}"}
 
 @app.get("/transactions")
 def get_transactions():
