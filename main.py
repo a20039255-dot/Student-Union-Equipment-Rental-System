@@ -45,26 +45,24 @@ def init_sheets():
     try:
         env_key = os.getenv("GOOGLE_JSON_KEY")
         info = json.loads(env_key) if env_key else json.load(open('google-key.json'))
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(info, SCOPE)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(info, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
         client = gspread.authorize(creds)
         
-        # 🌟 絕對綁定：使用您的試算表唯一 ID，徹底消滅抓錯檔案的問題
-        ss = client.open_by_key("1r0vqm8FU3KWp_56fJTW-aDW-8JPK5poXQ9jk-IhZ9Sc")
+        # 🌟 終極殺手鐧：直接貼上完整的網址，絕不打錯字！
+        SHEET_URL = "https://docs.google.com/spreadsheets/d/1r0vqm8FU3KWp_56fjTW-aDW-8JPK5poXQ9jk-Ihz9Sc/edit"
+        ss = client.open_by_url(SHEET_URL)
         
         s_dict = {
             "admin": ss.worksheet("admins"),
             "equip": ss.worksheet("equipments"),
-            "log": ss.worksheet("log")
+            "log": ss.worksheet("log"),
+            "settings": ss.worksheet("settings")
         }
-        try:
-            s_dict["settings"] = ss.worksheet("settings")
-        except:
-            print("警告：找不到 settings 工作表")
-        return s_dict  
+        return s_dict
     except Exception as e:
         print(f"Sheets 連線失敗: {e}")
         return None
-
+    
 def sync_admin():
     global admins_db
     if not sheets: return
