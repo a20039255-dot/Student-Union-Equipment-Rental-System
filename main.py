@@ -55,7 +55,7 @@ def init_sheets():
         client = gspread.authorize(creds)
         
         # 🌟 終極殺手鐧：直接貼上完整的網址，徹底解決大小寫認錯的問題！
-        SHEET_URL = "https://docs.google.com/spreadsheets/d/1r0vqm8FU3KWp_56fjTW-aDW-8JPK5poXQ9jk-Ihz9Sc/edit"
+        SHEET_URL = "https://docs.google.com/spreadsheets/d/1r0vqm8FU3KWp_56fJTW-aDW-8JPK5poXQ9jk-IhZ9Sc/edit?usp=sharing"
         ss = client.open_by_url(SHEET_URL)
         
         s_dict = {
