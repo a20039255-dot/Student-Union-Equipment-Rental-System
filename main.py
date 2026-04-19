@@ -198,46 +198,75 @@ def admin_login(data: dict):
         return {"成功": True, "姓名": admins_db[code].get("幹部名稱")}
     return {"成功": False}
 
+# @app.get("/equipments")
+# def get_equipments():
+#     try:
+#         import os, json, gspread
+#         from oauth2client.service_account import ServiceAccountCredentials
+        
+#         # 1. 檢查金鑰
+#         env_key = os.getenv("GOOGLE_JSON_KEY")
+#         if not env_key:
+#             try:
+#                 open('google-key.json')
+#             except Exception:
+#                 return {"深層X光": "找不到金鑰！沒有環境變數，也找不到 google-key.json 檔案。"}
+                
+#         info = json.loads(env_key) if env_key else json.load(open('google-key.json'))
+#         creds = ServiceAccountCredentials.from_json_keyfile_dict(info, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
+#         client = gspread.authorize(creds)
+        
+#         # 2. 檢查試算表 ID
+#         try:
+#             ss = client.open_by_key("1r0vqm8FU3KWp_56fjTW-aDW-8JPK5poXQ9jk-IhZ9Sc")
+#         except Exception as e:
+#             return {"深層X光": f"進不去試算表！權限不足或 ID 錯誤。系統原話: {str(e)}"}
+            
+#         # 3. 逐一檢查分頁名稱
+#         errors = []
+#         for name in ["admins", "equipments", "log", "settings"]:
+#             try:
+#                 ss.worksheet(name)
+#             except Exception:
+#                 errors.append(f"找不到叫做 '{name}' 的分頁")
+                
+#         if errors:
+#             return {"深層X光": "分頁名稱對不起來：" + "、".join(errors)}
+            
+#         # 4. 如果都活著，讀取第一列看看
+#         eq_sheet = ss.worksheet("equipments")
+#         data = eq_sheet.get_all_values()
+#         return {"深層X光": "連線完美！第一列標題是: " + str(data[0] if data else "空的")}
+        
+#     except Exception as e:
+#         return {"深層X光": f"發生未知崩潰: {str(e)}"}
+
 @app.get("/equipments")
 def get_equipments():
     try:
         import os, json, gspread
         from oauth2client.service_account import ServiceAccountCredentials
         
-        # 1. 檢查金鑰
         env_key = os.getenv("GOOGLE_JSON_KEY")
-        if not env_key:
-            try:
-                open('google-key.json')
-            except Exception:
-                return {"深層X光": "找不到金鑰！沒有環境變數，也找不到 google-key.json 檔案。"}
-                
         info = json.loads(env_key) if env_key else json.load(open('google-key.json'))
+        
+        # 🌟 照妖鏡：把目前使用的金鑰 Email 抓出來
+        current_bot = info.get("client_email", "未知的機器人")
+        
         creds = ServiceAccountCredentials.from_json_keyfile_dict(info, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
         client = gspread.authorize(creds)
         
-        # 2. 檢查試算表 ID
         try:
             ss = client.open_by_key("1r0vqm8FU3KWp_56fjTW-aDW-8JPK5poXQ9jk-IhZ9Sc")
+            return {"結果": "連線成功！"}
         except Exception as e:
-            return {"深層X光": f"進不去試算表！權限不足或 ID 錯誤。系統原話: {str(e)}"}
+            return {
+                "深層X光": "進不去試算表！",
+                "正在敲門的機器人": current_bot,  # 👈 兇手就在這裡
+                "您截圖上允許的機器人": "sheets-robot@equipment-system-493219.iam.gserviceaccount.com",
+                "系統原話": str(e)
+            }
             
-        # 3. 逐一檢查分頁名稱
-        errors = []
-        for name in ["admins", "equipments", "log", "settings"]:
-            try:
-                ss.worksheet(name)
-            except Exception:
-                errors.append(f"找不到叫做 '{name}' 的分頁")
-                
-        if errors:
-            return {"深層X光": "分頁名稱對不起來：" + "、".join(errors)}
-            
-        # 4. 如果都活著，讀取第一列看看
-        eq_sheet = ss.worksheet("equipments")
-        data = eq_sheet.get_all_values()
-        return {"深層X光": "連線完美！第一列標題是: " + str(data[0] if data else "空的")}
-        
     except Exception as e:
         return {"深層X光": f"發生未知崩潰: {str(e)}"}
 
