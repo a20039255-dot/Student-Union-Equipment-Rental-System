@@ -49,13 +49,21 @@ def send_discord_notify(msg, url):
 # --- 核心功能：Google Sheets 連線與同步 ---
 def init_sheets():
     try:
+        # 1. 🌟 從環境變數讀取網址
+        SHEET_URL = os.getenv("SHEET_URL")
+        
+        # 2. 🛡️ 防呆機制：如果忘記設定環境變數，直接讓它大聲尖叫（報錯）
+        if not SHEET_URL:
+            # 這裡我們拋出一個明顯的錯誤，方便您在 Logs 裡一眼看到
+            raise ValueError("🚨 錯誤：找不到環境變數 'SHEET_URL'！請至 Cloud Run 控制台設定。")
+
+        # 原有的金鑰讀取邏輯
         env_key = os.getenv("GOOGLE_JSON_KEY")
         info = json.loads(env_key) if env_key else json.load(open('google-key.json'))
         creds = ServiceAccountCredentials.from_json_keyfile_dict(info, SCOPE)
         client = gspread.authorize(creds)
         
-        # 🌟 終極殺手鐧：直接貼上完整的網址，徹底解決大小寫認錯的問題！
-        SHEET_URL = "https://docs.google.com/spreadsheets/d/1r0vqm8FU3KWp_56fJTW-aDW-8JPK5poXQ9jk-IhZ9Sc/edit?usp=sharing"
+        # 3. 🚀 使用讀取到的網址連線
         ss = client.open_by_url(SHEET_URL)
         
         s_dict = {
@@ -66,7 +74,8 @@ def init_sheets():
         }
         return s_dict
     except Exception as e:
-        print(f"Sheets 連線失敗: {e}")
+        # 如果連線失敗，直接印出原因，不要 pass
+        print(f"❌ Sheets 連線失敗原因：{str(e)}")
         return None
 
 def sync_admin():
