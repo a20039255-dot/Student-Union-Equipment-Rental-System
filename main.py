@@ -106,7 +106,7 @@ def sync_log():
     try:
         transactions.clear()
         all_logs = sheets["log"].get_all_records()
-        max_id = 1000
+        max_id = 0
         for r in all_logs:
             try:
                 tid = int(r.get("交易編號", 0))
@@ -114,7 +114,7 @@ def sync_log():
                     transactions[tid] = r
                     if tid > max_id: max_id = tid
             except: pass
-        transaction_id_counter = max_id + 1
+        transaction_id_counter = 1
     except: pass
 
 # 🌟 無敵強硬讀取版：無視空白行與格式錯誤
