@@ -348,38 +348,63 @@ def return_item(data: dict):
 
 @app.post("/return_by_student")
 def return_by_student(data: dict):
-    # 自動捕捉前端可能傳來的各種變數名稱，並過濾空白
-    sid_suffix = str(data.get("學號", data.get("sid", data.get("student_id", "")))).strip()
+    # 捕捉前端傳來的學號
+    sid_suffix = str(data.get("學號", data.get("sid", ""))).strip()
     admin = data.get("點收幹部", "未指定")
     
     if not sid_suffix:
-        return {"成功": False, "訊息": "後端沒有收到學號末三碼"}
+        return {"成功": False, "訊息": "沒有收到學號末碼"}
 
     with db_lock:
         try:
             sync_log()
             log_data = sheets["log"].get_all_records()
-            to_return_tids = []
             
-            for r in log_data:
-                # 🌟 確保名稱是「借用人學號」，並去除試算表中可能不小心打出的空白
+            log_updates = []
+            returned_equips = {}
+            count = 0
+            
+            # 1. 找出所有要歸還的項目，並準備「打包」更新的資料
+            for idx, r in enumerate(log_data):
                 full_sid = str(r.get("借用人學號", "")).strip()
                 status = str(r.get("狀態", "")).strip()
                 
-                # 🌟 同時接受借用中與核准
+                # 兼容「借用中」與「核准」狀態
                 if full_sid.endswith(sid_suffix) and status in ["借用中", "核准"]:
-                    to_return_tids.append(int(r.get("交易編號")))
+                    row = idx + 2
+                    # F欄=狀態, G欄=處理人, H欄=歸還時間
+                    log_updates.append({'range': f'F{row}:H{row}', 'values': [["已歸還", admin, get_tw_time()]]})
+                    
+                    ename = r.get("設備名稱")
+                    returned_equips[ename] = returned_equips.get(ename, 0) + 1
+                    count += 1
             
-            if not to_return_tids: 
-                return {"成功": False, "訊息": f"找不到末碼為 {sid_suffix} 且狀態為借用中/核准的紀錄"}
-            
-            count = 0
-            for tid in to_return_tids:
-                return_item({"交易編號": tid, "點收幹部": admin})
-                count += 1
+            if count == 0:
+                return {"成功": False, "訊息": "找不到符合的紀錄"}
+
+            # 2. 準備更新庫存
+            equip_updates = []
+            if returned_equips:
+                equip_data = sheets["equip"].get_all_records()
+                for e_idx, e_r in enumerate(equip_data):
+                    ename = e_r.get("設備名稱")
+                    if ename in returned_equips:
+                        curr = int(e_r.get("剩餘數量", 0))
+                        row = e_idx + 2
+                        # D欄=剩餘數量
+                        equip_updates.append({'range': f'D{row}', 'values': [[curr + returned_equips[ename]]]})
+
+            # 3. ⚡ 終極加速：一次性批量寫入 Google 試算表
+            if log_updates: sheets["log"].batch_update(log_updates)
+            if equip_updates: sheets["equip"].batch_update(equip_updates)
+
+            # 更新完畢後重新同步記憶體
+            sync_log()
+            sync_equip()
             return {"成功": True, "歸還數量": count}
+            
         except Exception as e:
-            return {"成功": False, "訊息": str(e)}
+            return {"成功": False, "訊息": f"伺服器錯誤: {str(e)}"}
 
 # --- 逾期自動檢查 ---
 @app.get("/cron/check_overdue")
