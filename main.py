@@ -385,7 +385,7 @@ def cron_check():
     overdue_list = []
     
     for tid, t in transactions.items():
-        if t.get("狀態") == "借用中" and t.get("借用時間"):
+        if t.get("狀態") in ["借用中", "核准"] and t.get("借用時間"):
             try:
                 b_date = datetime.strptime(t["借用時間"], "%Y-%m-%d %H:%M")
                 if (today - b_date).days > limit_days:
