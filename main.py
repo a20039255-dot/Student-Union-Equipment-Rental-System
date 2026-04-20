@@ -348,28 +348,38 @@ def return_item(data: dict):
 
 @app.post("/return_by_student")
 def return_by_student(data: dict):
-    sid_suffix = str(data.get("學號", "")).strip()
-    admin = data.get("點收幹部")
+    # 自動捕捉前端可能傳來的各種變數名稱，並過濾空白
+    sid_suffix = str(data.get("學號", data.get("sid", data.get("student_id", "")))).strip()
+    admin = data.get("點收幹部", "未指定")
+    
+    if not sid_suffix:
+        return {"成功": False, "訊息": "後端沒有收到學號末三碼"}
+
     with db_lock:
         try:
             sync_log()
             log_data = sheets["log"].get_all_records()
             to_return_tids = []
+            
             for r in log_data:
-                full_sid = str(r.get("租借人員學號", ""))
-                # 🌟 關鍵修復：同時接受「借用中」與「核准」兩種狀態
-                if full_sid.endswith(sid_suffix) and r.get("狀態") in ["借用中", "核准"]:
+                # 🌟 確保名稱是「借用人學號」，並去除試算表中可能不小心打出的空白
+                full_sid = str(r.get("借用人學號", "")).strip()
+                status = str(r.get("狀態", "")).strip()
+                
+                # 🌟 同時接受借用中與核准
+                if full_sid.endswith(sid_suffix) and status in ["借用中", "核准"]:
                     to_return_tids.append(int(r.get("交易編號")))
             
-            if not to_return_tids: return {"成功": False}
+            if not to_return_tids: 
+                return {"成功": False, "訊息": f"找不到末碼為 {sid_suffix} 且狀態為借用中/核准的紀錄"}
             
             count = 0
             for tid in to_return_tids:
                 return_item({"交易編號": tid, "點收幹部": admin})
                 count += 1
             return {"成功": True, "歸還數量": count}
-        except:
-            return {"成功": False}
+        except Exception as e:
+            return {"成功": False, "訊息": str(e)}
 
 # --- 逾期自動檢查 ---
 @app.get("/cron/check_overdue")
