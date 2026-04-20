@@ -357,7 +357,8 @@ def return_by_student(data: dict):
             to_return_tids = []
             for r in log_data:
                 full_sid = str(r.get("租借人員學號", ""))
-                if full_sid.endswith(sid_suffix) and r.get("狀態") == "借用中":
+                # 🌟 關鍵修復：同時接受「借用中」與「核准」兩種狀態
+                if full_sid.endswith(sid_suffix) and r.get("狀態") in ["借用中", "核准"]:
                     to_return_tids.append(int(r.get("交易編號")))
             
             if not to_return_tids: return {"成功": False}
